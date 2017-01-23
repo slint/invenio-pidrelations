@@ -103,6 +103,11 @@ class PIDRelation(db.Model, Timestamp):
 
     order = db.Column(db.Integer, nullable=True)
     """Order in which the PID relations (e.g.: versions sequence)."""
+    #
+    # Relations
+    #
+    # child_pid = db.relationship(.., backref='parent_pids') ??
+    # parent_pid = db.relationship(.., backref='child_pids') ??
 
     @classmethod
     def create(cls, parent_pid, child_pid, relation_type, order):
@@ -148,34 +153,80 @@ class PIDRelation(db.Model, Timestamp):
 
     @staticmethod
     def is_head_pid(pid):
+        # return JOIN(PID, PIDRelation, PID.id == PIDRelation.parent_pid_id).filter(
+        #    relation_type=RelationType.version,
+        #    PID.id == pid.id
+        #    ).count() > 0
         pass
 
     @staticmethod
     def get_head_pid(pid):
+        """
+        Works both for Head PIDS (return the parameter itself) and versions (return parent)
+        """
+        # Return self if already a head
+        # if is_head_pid(pid):
+        #     return pid
+        # else:
+        #    return JOIN(PID, PIDRelation, PID.id == PIDRelation.parent_pid_id).filter(
+        #    relation_type=RelationType.version,
+        #    PID.id == pid.id
+        #    ).one_or_none()
         pass
 
     @staticmethod
     def is_version_pid(pid):
+        # return JOIN(PID, PIDRelation, PID.id == PIDRelation.child_pid_id).filter(
+        #    relation_type=RelationType.version,
+        #    PID.id == pid.id
+        #    ).count() > 0
         pass
 
     @staticmethod
     def is_latest_pid(pid):
+        # if is_head_pid(pid):
+        #   return True
+        # else:
+        #   latest_pid = cls.get_latest_pid(pid)
+        #   if latest_pid is None:
+        #       raise("Not a versioned PID")
+        #   return latest_pid.id == pid.id
         pass
 
     @staticmethod
     def get_latest_pid(pid):
+        """
+        Works both for Head PIDS (return the highest child) and Version PIDs (return highest sibling)
+        """
+        # if is_head_pid(pid):
+        #    return JOIN(PID, PIDRelation, PID.id == PIDRelation.parent_pid_id).filter(
+        #       relation_type=RelationType.version,
+        #       PID.id == pid.id
+        #       ).sort(PIDRelation.order).first().child_pid
+        # else:
+        #    return cls.get_latest_pid(cls.get_head_pid(pid))
         pass
 
     @staticmethod
     def get_all_version_pids(pid):
+        """
+        Works both for Head PIDS (return the children) and Version PIDs (return all sibling including self)
+        """
+        # head = get_head_pid(pid)
+        # head.child_pids.order_by(PIDRelation.order)
         pass
 
     @staticmethod
-    def append_version_pid(head_pid, pid):
-        pass
+    def append_version_pid(pidA, pidB):
+        # Create a relationship between parent
+        # return cls.insert_version_pid(head_pid, pid, -1)
 
     @staticmethod
     def insert_version_pid(head_pid, pid, index):
+        pass
+
+    @staticmethod
+    def remove_version_pid(pid):
         pass
 
 
