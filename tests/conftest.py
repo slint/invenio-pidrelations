@@ -27,11 +27,17 @@
 from __future__ import absolute_import, print_function
 
 import shutil
+import os
 import tempfile
 
 import pytest
 from flask import Flask
 from flask_babelex import Babel
+from invenio_db import InvenioDB, db as db_
+from invenio_pidstore import InvenioPIDStore
+from invenio_pidrelations import InvenioPIDRelations
+
+from sqlalchemy_utils.functions import create_database, database_exists
 
 
 @pytest.yield_fixture()
@@ -48,8 +54,14 @@ def base_app(instance_path):
     app_ = Flask('testapp', instance_path=instance_path)
     app_.config.update(
         SECRET_KEY='SECRET_KEY',
+        SQLALCHEMY_DATABASE_URI=os.environ.get(
+            'SQLALCHEMY_DATABASE_URI', 'sqlite:///test.db'),
+        SQLALCHEMY_TRACK_MODIFICATIONS=True,
         TESTING=True,
     )
+    InvenioPIDStore(app_)
+    InvenioPIDRelations(app_)
+    InvenioDB(app_)
     Babel(app_)
     return app_
 
@@ -59,3 +71,14 @@ def app(base_app):
     """Flask application fixture."""
     with base_app.app_context():
         yield base_app
+
+
+@pytest.yield_fixture()
+def db(app):
+    """Database fixture."""
+    if not database_exists(str(db_.engine.url)):
+        create_database(str(db_.engine.url))
+    db_.create_all()
+    yield db_
+    db_.session.remove()
+    db_.drop_all()

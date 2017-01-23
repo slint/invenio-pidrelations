@@ -47,6 +47,15 @@ extras_require = {
         'Sphinx>=1.4.2',
     ],
     'tests': tests_require,
+    'mysql': [
+        'invenio-db[mysql]>=1.0.0b1',
+    ],
+    'postgresql': [
+        'invenio-db[postgresql]>=1.0.0b1',
+    ],
+    'sqlite': [
+        'invenio-db>=1.0.0b1',
+    ],
 }
 
 extras_require['all'] = []
@@ -60,6 +69,7 @@ setup_requires = [
 
 install_requires = [
     'Flask-BabelEx>=0.9.2',
+    'invenio-pidstore>=1.0.0b1'
 ]
 
 packages = find_packages()
