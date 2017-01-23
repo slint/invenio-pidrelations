@@ -40,3 +40,43 @@ def test_models(app, db):
     assert head_pid.pid_value == 'foobar'
     assert head_pid.pid_type == pid.pid_type
     pass
+
+
+def test_foo(app, db):
+    h1 = PersistentIdentifier.create('doi', 'foobar')
+    h1v1 = PersistentIdentifier.create('doi', 'foobar.v1')
+    h1v2 = PersistentIdentifier.create('doi', 'foobar.v2')
+    PIDRelation.create(h1, h1v1, RelationType.VERSION, 0)
+    PIDRelation.create(h1, h1v2, RelationType.VERSION, 1)
+
+    h2 = PersistentIdentifier.create('doi', 'spam')
+    h2v1 = PersistentIdentifier.create('doi', 'spam.v1')
+    PIDRelation.create(h2, h2v1, RelationType.VERSION, 0)
+
+    c1 = PersistentIdentifier.create('doi', 'bazbar')
+    c1r1 = PersistentIdentifier.create('doi', '12345')
+    c1r2 = PersistentIdentifier.create('doi', '54321')
+
+    pid1 = PersistentIdentifier.create('doi', 'other')
+    PIDRelation.create(c1, c1r1, RelationType.COLLECTION, None)
+    PIDRelation.create(c1, c1r2, RelationType.COLLECTION, None)
+    assert PIDRelation.is_head_pid(h1)
+    assert not PIDRelation.is_head_pid(h1v1)
+    assert not PIDRelation.is_head_pid(h1v2)
+    assert PIDRelation.is_head_pid(h2)
+    assert not PIDRelation.is_head_pid(h2v1)
+    assert not PIDRelation.is_head_pid(c1)
+    assert not PIDRelation.is_head_pid(c1r1)
+    assert not PIDRelation.is_head_pid(c1r2)
+    assert not PIDRelation.is_head_pid(pid1)
+
+    assert PIDRelation.get_head_pid(h1) == h1
+    assert PIDRelation.get_head_pid(h1v1) == h1
+    assert PIDRelation.get_head_pid(h1v2) == h1
+    assert PIDRelation.get_head_pid(h2) == h2
+    assert PIDRelation.get_head_pid(h2v1) == h2
+    assert PIDRelation.get_head_pid(h2v1) == h2
+    assert PIDRelation.get_head_pid(pid1) is None
+    assert PIDRelation.get_head_pid(c1) is None
+    assert PIDRelation.get_head_pid(c1r1) is None
+    import ipdb; ipdb.set_trace()

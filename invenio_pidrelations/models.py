@@ -32,6 +32,7 @@ from enum import Enum
 from flask_babelex import gettext
 from invenio_db import db
 from speaklater import make_lazy_gettext
+from sqlalchemy.orm import backref
 from sqlalchemy_utils.models import Timestamp
 from sqlalchemy_utils.types import ChoiceType
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -45,6 +46,7 @@ logger = logging.getLogger('invenio-pidstore')
 
 PIDRELATION_TYPE_TITLES = {
     'VERSION': _('Version'),
+    'COLLECTION': _('Collection'),
 }
 
 
@@ -53,6 +55,9 @@ class RelationType(Enum):
 
     VERSION = 'V'
     """Two PIDs are subsequent versions of one another."""
+
+    COLLECTION = 'C'
+    """PIDs are aggregated into a collection of PIDs."""
 
     def __init__(self, value):
         """Hack."""
@@ -106,8 +111,15 @@ class PIDRelation(db.Model, Timestamp):
     #
     # Relations
     #
-    # child_pid = db.relationship(.., backref='parent_pids') ??
-    # parent_pid = db.relationship(.., backref='child_pids') ??
+    parent_pid = db.relationship(
+        PersistentIdentifier,
+        primaryjoin=PersistentIdentifier.id == parent_pid_id,
+        backref=backref('child_pids', lazy='dynamic'))
+
+    child_pid = db.relationship(
+        PersistentIdentifier,
+        primaryjoin=PersistentIdentifier.id == child_pid_id,
+        backref=backref('parent_pids', lazy='dynamic'))
 
     @classmethod
     def create(cls, parent_pid, child_pid, relation_type, order):
@@ -122,7 +134,7 @@ class PIDRelation(db.Model, Timestamp):
                 #             "{obj.child_pid_id} ({obj.relation_type}, "
                 #             "order:{obj.order})".format(obj=obj))
         except IntegrityError:
-            raise Exeption("PID Relation already exists.")
+            raise Exception("PID Relation already exists.")
             # msg = "PIDRelation already exists: " \
             #       "{0} -> {1} ({2})".format(
             #         parent_pid, child_pid, relation_type)
@@ -153,37 +165,51 @@ class PIDRelation(db.Model, Timestamp):
 
     @staticmethod
     def is_head_pid(pid):
-        # return JOIN(PID, PIDRelation, PID.id == PIDRelation.parent_pid_id).filter(
-        #    relation_type=RelationType.version,
-        #    PID.id == pid.id
-        #    ).count() > 0
-        pass
+        """Determine if 'pid' is a Head PID."""
+        return db.session.query(PIDRelation).join(
+                PersistentIdentifier,
+                PIDRelation.parent_pid_id == PersistentIdentifier.id
+            ).filter(
+                PersistentIdentifier.id == pid.id,
+                PIDRelation.relation_type == RelationType.VERSION
+                ).count() > 0
 
-    @staticmethod
-    def get_head_pid(pid):
+    @classmethod
+    def get_head_pid(cls, pid):
         """
-        Works both for Head PIDS (return the parameter itself) and versions (return parent)
+        Get the Head PID of a PID in the argument.
+
+        If 'pid' is already the Head PID, return it, otherwise
+        return the Head PID as defined in the relation table.
+        In case the PID does not have a Head PID, return None.
         """
-        # Return self if already a head
-        # if is_head_pid(pid):
-        #     return pid
-        # else:
-        #    return JOIN(PID, PIDRelation, PID.id == PIDRelation.parent_pid_id).filter(
-        #    relation_type=RelationType.version,
-        #    PID.id == pid.id
-        #    ).one_or_none()
-        pass
+        if cls.is_head_pid(pid):
+            return pid
+        else:
+            q = db.session.query(PIDRelation).filter(
+                PIDRelation.child_pid_id == pid.id,
+                PIDRelation.relation_type == RelationType.VERSION
+                )
+            if q.count() == 0:
+                return None
+            else:
+                return PersistentIdentifier.query.get(q.one().parent_pid_id)
 
     @staticmethod
     def is_version_pid(pid):
-        # return JOIN(PID, PIDRelation, PID.id == PIDRelation.child_pid_id).filter(
-        #    relation_type=RelationType.version,
-        #    PID.id == pid.id
-        #    ).count() > 0
-        pass
+        """
+        Determine if 'pid' is a Version PID.
+        """
+        db.session.query(PIDRelation).filter(
+            PIDRelation.child_pid_id == pid.id,
+            PIDRelation.relation_type == RelationType.VERSION
+            ).count() > 0
 
     @staticmethod
     def is_latest_pid(pid):
+        """
+        Determine if 'pid' is the latest version of a resource.
+        """
         # if is_head_pid(pid):
         #   return True
         # else:
@@ -193,19 +219,18 @@ class PIDRelation(db.Model, Timestamp):
         #   return latest_pid.id == pid.id
         pass
 
-    @staticmethod
-    def get_latest_pid(pid):
+    @classmethod
+    def get_latest_pid(cls, pid):
         """
-        Works both for Head PIDS (return the highest child) and Version PIDs (return highest sibling)
+        Get the latest PID as pointed by the Head PID.
+
+        If the 'pid' is a Head PID, return the latest of its children.
+        If the 'pid' is a Version PID, return the latest of its siblings.
+        Return None for the non-versioned PIDs.
         """
-        # if is_head_pid(pid):
-        #    return JOIN(PID, PIDRelation, PID.id == PIDRelation.parent_pid_id).filter(
-        #       relation_type=RelationType.version,
-        #       PID.id == pid.id
-        #       ).sort(PIDRelation.order).first().child_pid
-        # else:
-        #    return cls.get_latest_pid(cls.get_head_pid(pid))
-        pass
+
+        head = cls.get_head_pid(pid)
+        head.child_pids.order_by(PIDRelation.order).first()
 
     @staticmethod
     def get_all_version_pids(pid):
@@ -218,6 +243,7 @@ class PIDRelation(db.Model, Timestamp):
 
     @staticmethod
     def append_version_pid(pidA, pidB):
+        pass
         # Create a relationship between parent
         # return cls.insert_version_pid(head_pid, pid, -1)
 
