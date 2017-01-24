@@ -59,15 +59,15 @@ def test_foo(app, db):
     pid1 = PersistentIdentifier.create('doi', 'other')
     PIDRelation.create(c1, c1r1, RelationType.COLLECTION, None)
     PIDRelation.create(c1, c1r2, RelationType.COLLECTION, None)
-    assert PIDRelation.is_head_pid(h1)
-    assert not PIDRelation.is_head_pid(h1v1)
-    assert not PIDRelation.is_head_pid(h1v2)
-    assert PIDRelation.is_head_pid(h2)
-    assert not PIDRelation.is_head_pid(h2v1)
-    assert not PIDRelation.is_head_pid(c1)
-    assert not PIDRelation.is_head_pid(c1r1)
-    assert not PIDRelation.is_head_pid(c1r2)
-    assert not PIDRelation.is_head_pid(pid1)
+    assert PIDRelation.is_head_pid(h1) is True
+    assert PIDRelation.is_head_pid(h1v1) is False
+    assert PIDRelation.is_head_pid(h1v2) is False
+    assert PIDRelation.is_head_pid(h2) is True
+    assert PIDRelation.is_head_pid(h2v1) is False
+    assert PIDRelation.is_head_pid(c1) is False
+    assert PIDRelation.is_head_pid(c1r1) is False
+    assert PIDRelation.is_head_pid(c1r2) is False
+    assert PIDRelation.is_head_pid(pid1) is False
 
     assert PIDRelation.get_head_pid(h1) == h1
     assert PIDRelation.get_head_pid(h1v1) == h1
@@ -79,6 +79,14 @@ def test_foo(app, db):
     assert PIDRelation.get_head_pid(c1) is None
     assert PIDRelation.get_head_pid(c1r1) is None
 
+    h1_pids = PIDRelation.get_all_version_pids(h1)
+    assert h1_pids[0] == h1v1
+    assert h1_pids[1] == h1v2
+
+    h1_pids = PIDRelation.get_all_version_pids(h1v2)
+    assert h1_pids[0] == h1v1
+    assert h1_pids[1] == h1v2
+
 
 def test_head_pid_methods(app, db):
     """Test Head PID methods."""
@@ -87,28 +95,31 @@ def test_head_pid_methods(app, db):
     pid = PersistentIdentifier.create('doi', 'foobar.v1')
     db.session.commit()
 
-    assert not PIDRelation.is_head_pid(pid)
+    assert PIDRelation.is_head_pid(pid) is False
     assert PIDRelation.get_head_pid(pid) is None
 
     # Add a Head PID to the orphan PID
     head_pid, pid_relation = PIDRelation.create_head_pid(pid, 'foobar')
     db.session.commit()
 
-    assert PIDRelation.is_head_pid(head_pid)
-    assert not PIDRelation.is_head_pid(pid)
+    assert PIDRelation.is_head_pid(head_pid) is True
+    assert PIDRelation.is_head_pid(pid) is False
     assert PIDRelation.get_head_pid(head_pid) == head_pid
     assert PIDRelation.get_head_pid(pid) == head_pid
 
 
 def test_version_pid_methods(app, db):
     pid = PersistentIdentifier.create('doi', 'foobar.v1')
-    assert PIDRelation.is_version_pid(pid)
-    assert PIDRelation.is_latest_pid(pid)
+    assert PIDRelation.is_version_pid(pid) is False  # no Head PID
+    assert PIDRelation.is_latest_pid(pid) is False  # no Head PID
+    assert PIDRelation.is_head_pid(pid) is False
 
     head_pid, pid_relation = PIDRelation.create_head_pid(pid, 'foobar')
-    db.session.commit()
 
-    assert not PIDRelation.is_head_pid(pid)
+    assert PIDRelation.is_head_pid(pid) is False
+    assert PIDRelation.is_head_pid(head_pid) is True
+    assert PIDRelation.is_version_pid(pid) is True
+    assert PIDRelation.is_latest_pid(pid) is True
 
     assert PIDRelation.get_head_pid(head_pid) == head_pid
     assert PIDRelation.get_head_pid(pid) == head_pid
