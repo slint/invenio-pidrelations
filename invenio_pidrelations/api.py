@@ -33,8 +33,12 @@ from .models import PIDRelation, RelationType
 class PIDVersionRelation(object):
     """API for PID version relations."""
 
+    def __init__(self, pid):
+        # TODO: Use as a wrapper?
+        pass
+
     @staticmethod
-    def create_head_pid(pid, head_pid_value):
+    def create_head(pid, head_pid_value):
         """
         Create a Head PID for the Version PID.
 
@@ -56,12 +60,12 @@ class PIDVersionRelation(object):
         return head_pid
 
     @staticmethod
-    def is_head_pid(pid):
+    def is_head(pid):
         """Determine if 'pid' is a Head PID."""
         return PIDRelation.has_children(pid, RelationType.VERSION)
 
     @classmethod
-    def get_head_pid(cls, pid):
+    def get_head(cls, pid):
         """
         Get the Head PID of a PID in the argument.
 
@@ -70,13 +74,13 @@ class PIDVersionRelation(object):
         In case the PID does not have a Head PID, return None.
         """
 
-        if cls.is_head_pid(pid):
+        if cls.is_head(pid):
             return pid
         else:
             return PIDRelation.parent(pid, RelationType.VERSION)
 
     @staticmethod
-    def is_version_pid(pid):
+    def is_version(pid):
         """
         Determine if 'pid' is a Version PID.
 
@@ -85,20 +89,20 @@ class PIDVersionRelation(object):
         return PIDRelation.parents(pid, RelationType.VERSION).count() == 1
 
     @classmethod
-    def is_latest_pid(cls, pid):
+    def is_latest(cls, pid):
         """
         Determine if 'pid' is the latest version of a resource.
 
         Resolves True for Versioned PIDs which are the oldest of its siblings.
         False otherwise, also for Head PIDs.
         """
-        latest_pid = cls.get_latest_pid(pid)
+        latest_pid = cls.get_latest(pid)
         if latest_pid is None:
             return False
         return latest_pid == pid
 
     @classmethod
-    def get_latest_pid(cls, pid):
+    def get_latest(cls, pid):
         """
         Get the latest PID as pointed by the Head PID.
 
@@ -107,7 +111,7 @@ class PIDVersionRelation(object):
         Return None for the non-versioned PIDs.
         """
 
-        head = cls.get_head_pid(pid)
+        head = cls.get_head(pid)
         if head is None:
             return None
         else:
@@ -115,22 +119,22 @@ class PIDVersionRelation(object):
                 PIDRelation.order.desc()).first().child_pid
 
     @classmethod
-    def get_all_version_pids(cls, pid):
+    def get_all_versions(cls, pid):
         """
         Works both for Head PIDS (return the children) and Version PIDs (return
         all sibling including self)
         """
-        head = cls.get_head_pid(pid)
+        head = cls.get_head(pid)
         return [pr.child_pid for pr in
                 head.child_relations.order_by(PIDRelation.order).all()]
 
     @staticmethod
-    def insert_version_pid(head_pid, pid, index):
+    def insert_version(head_pid, pid, index):
         # As regular insert but with Head PID redirect
         pass
 
     @staticmethod
-    def remove_version_pid(pid):
+    def remove_version(pid):
         pass
 
 

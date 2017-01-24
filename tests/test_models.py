@@ -35,7 +35,7 @@ from invenio_pidrelations.api import PIDVersionRelation
 def test_pidrelation(app, db):
     """Test version import."""
     pid = PersistentIdentifier.create('doi', 'foobar.v1')
-    head_pid = PIDVersionRelation.create_head_pid(pid, 'foobar')
+    head_pid = PIDVersionRelation.create_head(pid, 'foobar')
     db.session.commit()
 
     assert head_pid.pid_value == 'foobar'
@@ -135,34 +135,34 @@ def test_version_api_methods(app, db, pids):
     h1, h1v1, h1v2, h2, h2v1, c1, c1r1, c1r2, pid1 = \
         (pids[p] for p in ['h1', 'h1v1', 'h1v2', 'h2', 'h2v1',
                            'c1', 'c1r1', 'c1r2', 'pid1'])
-    assert PIDVersionRelation.is_head_pid(h1) is True
-    assert PIDVersionRelation.is_head_pid(h1v1) is False
-    assert PIDVersionRelation.is_head_pid(h1v2) is False
-    assert PIDVersionRelation.is_head_pid(h2) is True
-    assert PIDVersionRelation.is_head_pid(h2v1) is False
+    assert PIDVersionRelation.is_head(h1) is True
+    assert PIDVersionRelation.is_head(h1v1) is False
+    assert PIDVersionRelation.is_head(h1v2) is False
+    assert PIDVersionRelation.is_head(h2) is True
+    assert PIDVersionRelation.is_head(h2v1) is False
 
     # False for non-versioned PIDs and Collection concepts
-    assert PIDVersionRelation.is_head_pid(pid1) is False
-    assert PIDVersionRelation.is_head_pid(c1) is False
-    assert PIDVersionRelation.is_head_pid(c1r1) is False
-    assert PIDVersionRelation.is_head_pid(c1r2) is False
+    assert PIDVersionRelation.is_head(pid1) is False
+    assert PIDVersionRelation.is_head(c1) is False
+    assert PIDVersionRelation.is_head(c1r1) is False
+    assert PIDVersionRelation.is_head(c1r2) is False
 
-    assert PIDVersionRelation.get_head_pid(h1) == h1
-    assert PIDVersionRelation.get_head_pid(h1v1) == h1
-    assert PIDVersionRelation.get_head_pid(h1v2) == h1
-    assert PIDVersionRelation.get_head_pid(h2) == h2
-    assert PIDVersionRelation.get_head_pid(h2v1) == h2
-    assert PIDVersionRelation.get_head_pid(h2v1) == h2
+    assert PIDVersionRelation.get_head(h1) == h1
+    assert PIDVersionRelation.get_head(h1v1) == h1
+    assert PIDVersionRelation.get_head(h1v2) == h1
+    assert PIDVersionRelation.get_head(h2) == h2
+    assert PIDVersionRelation.get_head(h2v1) == h2
+    assert PIDVersionRelation.get_head(h2v1) == h2
 
     # Not supported for non-versioned PIDs and Collection concepts
-    assert PIDVersionRelation.get_head_pid(pid1) is None
-    assert PIDVersionRelation.get_head_pid(c1) is None
-    assert PIDVersionRelation.get_head_pid(c1r1) is None
+    assert PIDVersionRelation.get_head(pid1) is None
+    assert PIDVersionRelation.get_head(c1) is None
+    assert PIDVersionRelation.get_head(c1r1) is None
 
-    assert [h1v1, h1v2] == PIDVersionRelation.get_all_version_pids(h1)
-    assert [h1v1, h1v2] == PIDVersionRelation.get_all_version_pids(h1v2)
+    assert [h1v1, h1v2] == PIDVersionRelation.get_all_versions(h1)
+    assert [h1v1, h1v2] == PIDVersionRelation.get_all_versions(h1v2)
 
-    assert PIDVersionRelation.get_latest_pid(h1) == h1v2
+    assert PIDVersionRelation.get_latest(h1) == h1v2
 
 
 def test_head_pid_methods(app, db):
@@ -172,33 +172,33 @@ def test_head_pid_methods(app, db):
     pid = PersistentIdentifier.create('doi', 'foobar.v1')
     db.session.commit()
 
-    assert PIDVersionRelation.is_head_pid(pid) is False
-    assert PIDVersionRelation.get_head_pid(pid) is None
+    assert PIDVersionRelation.is_head(pid) is False
+    assert PIDVersionRelation.get_head(pid) is None
 
     # Add a Head PID to the orphan PID
-    head_pid = PIDVersionRelation.create_head_pid(pid, 'foobar')
+    head_pid = PIDVersionRelation.create_head(pid, 'foobar')
     # Check if Head PID redirects to the Version PID
     assert head_pid.get_redirect() == pid
     db.session.commit()
 
-    assert PIDVersionRelation.is_head_pid(head_pid) is True
-    assert PIDVersionRelation.is_head_pid(pid) is False
-    assert PIDVersionRelation.get_head_pid(head_pid) == head_pid
-    assert PIDVersionRelation.get_head_pid(pid) == head_pid
+    assert PIDVersionRelation.is_head(head_pid) is True
+    assert PIDVersionRelation.is_head(pid) is False
+    assert PIDVersionRelation.get_head(head_pid) == head_pid
+    assert PIDVersionRelation.get_head(pid) == head_pid
 
 
 def test_version_pid_methods(app, db):
     pid = PersistentIdentifier.create('doi', 'foobar.v1')
-    assert PIDVersionRelation.is_version_pid(pid) is False  # no Head PID
-    assert PIDVersionRelation.is_latest_pid(pid) is False  # no Head PID
-    assert PIDVersionRelation.is_head_pid(pid) is False
+    assert PIDVersionRelation.is_version(pid) is False  # no Head PID
+    assert PIDVersionRelation.is_latest(pid) is False  # no Head PID
+    assert PIDVersionRelation.is_head(pid) is False
 
-    head_pid = PIDVersionRelation.create_head_pid(pid, 'foobar')
+    head_pid = PIDVersionRelation.create_head(pid, 'foobar')
 
-    assert PIDVersionRelation.is_head_pid(pid) is False
-    assert PIDVersionRelation.is_head_pid(head_pid) is True
-    assert PIDVersionRelation.is_version_pid(pid) is True
-    assert PIDVersionRelation.is_latest_pid(pid) is True
+    assert PIDVersionRelation.is_head(pid) is False
+    assert PIDVersionRelation.is_head(head_pid) is True
+    assert PIDVersionRelation.is_version(pid) is True
+    assert PIDVersionRelation.is_latest(pid) is True
 
-    assert PIDVersionRelation.get_head_pid(head_pid) == head_pid
-    assert PIDVersionRelation.get_head_pid(pid) == head_pid
+    assert PIDVersionRelation.get_head(head_pid) == head_pid
+    assert PIDVersionRelation.get_head(pid) == head_pid
