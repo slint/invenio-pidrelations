@@ -41,24 +41,84 @@ def test_pidrelation(app, db):
     assert head_pid.pid_type == pid.pid_type
 
 
-def test_foo(app, db):
-    h1 = PersistentIdentifier.create('doi', 'foobar')
-    h1v1 = PersistentIdentifier.create('doi', 'foobar.v1')
-    h1v2 = PersistentIdentifier.create('doi', 'foobar.v2')
-    PIDRelation.create(h1, h1v1, RelationType.VERSION, 0)
-    PIDRelation.create(h1, h1v2, RelationType.VERSION, 1)
+def test_basic_api_methods(app, db, pids):
 
-    h2 = PersistentIdentifier.create('doi', 'spam')
-    h2v1 = PersistentIdentifier.create('doi', 'spam.v1')
-    PIDRelation.create(h2, h2v1, RelationType.VERSION, 0)
+    # Test the "children" method (returns a query of PIDs)
+    # Version PIDs
+    h1, h1v1, h1v2, h2, h2v1, c1, c1r1, c1r2, pid1 = \
+        (pids[p] for p in ['h1', 'h1v1', 'h1v2', 'h2', 'h2v1',
+                           'c1', 'c1r1', 'c1r2', 'pid1'])
+    assert PIDRelation.children(h1, RelationType.VERSION).count() == 2
+    assert [h1v2, h1v1] == PIDRelation.children(h1, RelationType.VERSION,
+                                                ordered=False).all()
+    assert [h1v1, h1v2] == PIDRelation.children(h1, RelationType.VERSION,
+                                                ordered=True).all()
+    assert PIDRelation.children(h1v1, RelationType.VERSION).count() == 0
+    # Collection PIDs
+    assert PIDRelation.children(c1, RelationType.COLLECTION).count() == 2
+    assert [c1r1, c1r2] == PIDRelation.children(
+        c1, RelationType.COLLECTION).all()
+    assert PIDRelation.children(c1r1, RelationType.COLLECTION).count() == 0
+    # Regular PID
+    assert PIDRelation.children(pid1, RelationType.VERSION).count() == 0
 
-    c1 = PersistentIdentifier.create('doi', 'bazbar')
-    c1r1 = PersistentIdentifier.create('doi', '12345')
-    c1r2 = PersistentIdentifier.create('doi', '54321')
+    # Test the "parents" method (returns a query of PIDs)
+    assert PIDRelation.parents(h1, RelationType.VERSION).count() == 0
+    assert h1 == PIDRelation.parents(h1v1, RelationType.VERSION).one()
+    assert h1 == PIDRelation.parents(h1v2, RelationType.VERSION).one()
 
-    pid1 = PersistentIdentifier.create('doi', 'other')
-    PIDRelation.create(c1, c1r1, RelationType.COLLECTION, None)
-    PIDRelation.create(c1, c1r2, RelationType.COLLECTION, None)
+    # Test the "parent" method (returns a PID)
+    assert h1 == PIDRelation.parent(h1v1, RelationType.VERSION)
+    assert h1 == PIDRelation.parent(h1v2, RelationType.VERSION)
+
+    # Test the "siblings" method (returns a query of PIDs)
+    assert [h1v1, h1v2] == PIDRelation.siblings(
+        h1v1, RelationType.VERSION, ordered=True).all()
+
+    assert [h1v1, h1v2] == PIDRelation.siblings(
+        h1v2, RelationType.VERSION, ordered=True).all()
+
+    assert [c1r1, c1r2] == PIDRelation.siblings(
+        c1r1, RelationType.COLLECTION, ordered=False).all()
+
+    # Test the "insert" method
+    # Insert at the end (index=-1)
+    PIDRelation.insert(h1, pid1, RelationType.VERSION, index=-1)
+    assert [h1v1, h1v2, pid1] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+    PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
+    assert [h1v1, h1v2] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+
+    # Insert at the first position
+    PIDRelation.insert(h1, pid1, RelationType.VERSION, index=0)
+    assert [pid1, h1v1, h1v2] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+    PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
+    assert [h1v1, h1v2] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+
+    # Insert at the second position
+    PIDRelation.insert(h1, pid1, RelationType.VERSION, index=1)
+    assert [h1v1, pid1, h1v2] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+    PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
+    assert [h1v1, h1v2] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+
+    # Insert at the last position
+    PIDRelation.insert(h1, pid1, RelationType.VERSION, index=100)
+    assert [h1v1, h1v2, pid1] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+    PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
+    assert [h1v1, h1v2] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+
+
+def test_version_api_methods(app, db, pids):
+    h1, h1v1, h1v2, h2, h2v1, c1, c1r1, c1r2, pid1 = \
+        (pids[p] for p in ['h1', 'h1v1', 'h1v2', 'h2', 'h2v1',
+                           'c1', 'c1r1', 'c1r2', 'pid1'])
     assert PIDRelation.is_head_pid(h1) is True
     assert PIDRelation.is_head_pid(h1v1) is False
     assert PIDRelation.is_head_pid(h1v2) is False
@@ -79,13 +139,10 @@ def test_foo(app, db):
     assert PIDRelation.get_head_pid(c1) is None
     assert PIDRelation.get_head_pid(c1r1) is None
 
-    h1_pids = PIDRelation.get_all_version_pids(h1)
-    assert h1_pids[0] == h1v1
-    assert h1_pids[1] == h1v2
+    assert [h1v1, h1v2] == PIDRelation.get_all_version_pids(h1)
+    assert [h1v1, h1v2] == PIDRelation.get_all_version_pids(h1v2)
 
-    h1_pids = PIDRelation.get_all_version_pids(h1v2)
-    assert h1_pids[0] == h1v1
-    assert h1_pids[1] == h1v2
+    assert PIDRelation.get_latest_pid(h1) == h1v2
 
 
 def test_head_pid_methods(app, db):
@@ -100,6 +157,8 @@ def test_head_pid_methods(app, db):
 
     # Add a Head PID to the orphan PID
     head_pid, pid_relation = PIDRelation.create_head_pid(pid, 'foobar')
+    # Check if Head PID redirects to the Version PID
+    assert head_pid.get_redirect() == pid
     db.session.commit()
 
     assert PIDRelation.is_head_pid(head_pid) is True

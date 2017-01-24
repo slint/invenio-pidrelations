@@ -87,6 +87,7 @@ class PIDRelation(db.Model, Timestamp):
 
     __tablename__ = 'pidrelations_pidrelation'
 
+    # TODO: Remove explicit PK
     id = db.Column(db.Integer, primary_key=True)
     """Id of persistent identifier entry."""
 
@@ -115,12 +116,12 @@ class PIDRelation(db.Model, Timestamp):
     parent_pid = db.relationship(
         PersistentIdentifier,
         primaryjoin=PersistentIdentifier.id == parent_pid_id,
-        backref=backref('child_pids', lazy='dynamic'))
+        backref=backref('child_relations', lazy='dynamic'))
 
     child_pid = db.relationship(
         PersistentIdentifier,
         primaryjoin=PersistentIdentifier.id == child_pid_id,
-        backref=backref('parent_pids', lazy='dynamic'))
+        backref=backref('parent_relations', lazy='dynamic'))
 
     def __repr__(self):
         return "<PIDRelation: {parent} -> {child} ({type}, {order})>".format(
@@ -130,7 +131,121 @@ class PIDRelation(db.Model, Timestamp):
             order=self.order)
 
     @classmethod
-    def create(cls, parent_pid, child_pid, relation_type, order):
+    def children(cls, pid, relation_type, ordered=False):
+        q = db.session.query(PersistentIdentifier).join(
+            PIDRelation,
+            PIDRelation.child_pid_id == PersistentIdentifier.id
+        ).filter(
+            PIDRelation.parent_pid_id == pid.id,
+            PIDRelation.relation_type == relation_type
+        )
+        if ordered:
+            return q.order_by(PIDRelation.order)
+        else:
+            return q
+
+    @classmethod
+    def parents(cls, pid, relation_type):
+        return db.session.query(PersistentIdentifier).join(
+            PIDRelation,
+            PIDRelation.parent_pid_id == PersistentIdentifier.id
+        ).filter(
+            PIDRelation.child_pid_id == pid.id,
+            PIDRelation.relation_type == relation_type
+        )
+
+    @classmethod
+    def siblings(cls, pid, relation_type, ordered=False):
+        parent = cls.parent(pid, relation_type)
+        if parent is None:
+            raise Exception("PID does not have a parent for this relation. "
+                            "Impossible to determine siblings.")
+        q = db.session.query(PersistentIdentifier).join(
+            PIDRelation,
+            PIDRelation.child_pid_id == PersistentIdentifier.id
+        ).filter(
+            PIDRelation.parent_pid_id == parent.id,
+            PIDRelation.relation_type == relation_type
+        )
+        if ordered:
+            return q.order_by(PIDRelation.order)
+        else:
+            return q
+
+    @classmethod
+    def has_children(cls, pid, relation_type):
+        return cls.children.count() > 0
+
+    @classmethod
+    def has_parent(cls, pid, relation_type):
+        return cls.parents.count() > 0
+
+    @classmethod
+    def insert(cls, parent_pid, child_pid, relation_type, index=None):
+        """
+        Argument 'index' can take the following values:
+            0,1,2,... - insert child PID at the specified position
+            -1 - insert the child PID at the last position
+            None - insert child without order (no re-ordering is done)
+
+            NOTE: If 'index' is specified, all sibling relations should
+                  have PIDRelation.order information.
+
+        """
+        try:
+            with db.session.begin_nested():
+                if index is not None:
+                    children = parent_pid.child_relations.filter(
+                        PIDRelation.relation_type == relation_type).order_by(
+                            PIDRelation.order).all()
+                    relation_obj = cls.create(
+                        parent_pid, child_pid, relation_type, None)
+                    if index == -1:
+                        children.append(relation_obj)
+                    else:
+                        children.insert(index, relation_obj)
+                    for idx, c in enumerate(children):
+                        c.order = idx
+                else:
+                    relation_obj = cls.create(
+                        parent_pid, child_pid, relation_type, None)
+        except IntegrityError:
+            raise Exception("PID Relation already exists.")
+
+    @classmethod
+    def remove(cls, parent_pid, child_pid, relation_type, reorder=False):
+        """
+        Removes a PID relation.
+        """
+        with db.session.begin_nested():
+            relation = PIDRelation.query.filter_by(
+                parent_pid_id=parent_pid.id,
+                child_pid_id=child_pid.id,
+                relation_type=relation_type).one()
+            db.session.delete(relation)
+            if reorder:
+                children = parent_pid.child_relations.filter(
+                    PIDRelation.relation_type == relation_type).order_by(
+                        PIDRelation.order).all()
+                for idx, c in enumerate(children):
+                    c.order = idx
+
+    @classmethod
+    def parent(cls, pid, relation_type):
+        """Return the parent of the PID in given relation.
+
+        NOTE: Not supporting relations, which allow for multiple
+              parents, e.g. Collection.
+        """
+        q = cls.parents(pid, relation_type)
+        if q.count() > 1:
+            raise Exception("PID has more than one parent for this relation.")
+        else:
+            return q.first()
+
+    @classmethod
+    def create(cls, parent_pid, child_pid, relation_type, order=None):
+        """Create a PID relation for given parent and child."""
 
         try:
             with db.session.begin_nested():
@@ -149,6 +264,11 @@ class PIDRelation(db.Model, Timestamp):
             #         parent_pid, child_pid, relation_type)
             # logger.exception(msg)
             # raise Exception(msg)
+        return obj
+
+    #
+    # Version-specific methods
+    #
 
     @classmethod
     def create_head_pid(cls, pid, head_pid_value):
@@ -167,9 +287,10 @@ class PIDRelation(db.Model, Timestamp):
         head_pid = PersistentIdentifier.create(
             pid_type=pid.pid_type,
             pid_value=head_pid_value,
-            object_type='hed',
+            object_type=pid.object_type,
             status=PIDStatus.REGISTERED
         )
+        head_pid.redirect(pid)
         return head_pid, cls.create(head_pid, pid, RelationType.VERSION, 0)
 
     @staticmethod
@@ -216,7 +337,6 @@ class PIDRelation(db.Model, Timestamp):
             PIDRelation.child_pid_id == pid.id,
             PIDRelation.relation_type == RelationType.VERSION
         ).count() > 0
-        # return bool(pid.parent_pids)
 
     @classmethod
     def is_latest_pid(cls, pid):
@@ -229,7 +349,7 @@ class PIDRelation(db.Model, Timestamp):
         latest_pid = cls.get_latest_pid(pid)
         if latest_pid is None:
             return False
-        return latest_pid.id == pid.id
+        return latest_pid == pid
 
     @classmethod
     def get_latest_pid(cls, pid):
@@ -245,7 +365,8 @@ class PIDRelation(db.Model, Timestamp):
         if head is None:
             return None
         else:
-            return head.child_pids.order_by(PIDRelation.order).first()
+            return head.child_relations.order_by(
+                PIDRelation.order.desc()).first().child_pid
 
     @classmethod
     def get_all_version_pids(cls, pid):
@@ -255,17 +376,11 @@ class PIDRelation(db.Model, Timestamp):
         """
         head = cls.get_head_pid(pid)
         return [pr.child_pid for pr in
-                head.child_pids.order_by(PIDRelation.order).all()]
-
-    @staticmethod
-    def append_version_pid(pidA, pidB):
-        pass
-        # Create a relationship between parent
-        # return cls.insert_version_pid(head_pid, pid, -1)
-        pass
+                head.child_relations.order_by(PIDRelation.order).all()]
 
     @staticmethod
     def insert_version_pid(head_pid, pid, index):
+        # As regular insert but with Head PID redirect
         pass
 
     @staticmethod
