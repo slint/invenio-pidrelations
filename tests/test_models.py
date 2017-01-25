@@ -102,33 +102,94 @@ def test_basic_api_methods(app, db, pids):
     PIDRelation.insert(h1, pid1, RelationType.VERSION, index=-1)
     assert [h1v1, h1v2, pid1] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    # Make sure relations are ordered correctly
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == h1v1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == h1v2
+    assert h1_c[1].order == 1
+    assert h1_c[2].child_pid == pid1
+    assert h1_c[2].order == 2
+
     PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
     assert [h1v1, h1v2] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == h1v1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == h1v2
+    assert h1_c[1].order == 1
 
     # Insert at the first position
     PIDRelation.insert(h1, pid1, RelationType.VERSION, index=0)
     assert [pid1, h1v1, h1v2] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == pid1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == h1v1
+    assert h1_c[1].order == 1
+    assert h1_c[2].child_pid == h1v2
+    assert h1_c[2].order == 2
+
     PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
     assert [h1v1, h1v2] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == h1v1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == h1v2
+    assert h1_c[1].order == 1
 
     # Insert at the second position
     PIDRelation.insert(h1, pid1, RelationType.VERSION, index=1)
     assert [h1v1, pid1, h1v2] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == h1v1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == pid1
+    assert h1_c[1].order == 1
+    assert h1_c[2].child_pid == h1v2
+    assert h1_c[2].order == 2
+
     PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
     assert [h1v1, h1v2] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == h1v1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == h1v2
+    assert h1_c[1].order == 1
 
     # Insert at the last position
     PIDRelation.insert(h1, pid1, RelationType.VERSION, index=100)
     assert [h1v1, h1v2, pid1] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == h1v1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == h1v2
+    assert h1_c[1].order == 1
+    assert h1_c[2].child_pid == pid1
+    assert h1_c[2].order == 2
+
     PIDRelation.remove(h1, pid1, RelationType.VERSION, reorder=True)
     assert [h1v1, h1v2] == PIDRelation.children(
         h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1_c[0].child_pid == h1v1
+    assert h1_c[0].order == 0
+    assert h1_c[1].child_pid == h1v2
+    assert h1_c[1].order == 1
+
+    PIDRelation.remove(h1, h1v1, RelationType.VERSION, reorder=True)
+    assert [h1v2] == PIDRelation.children(
+        h1, RelationType.VERSION, ordered=True).all()
+    h1_c = h1.child_relations.order_by(PIDRelation.order).all()
+    assert h1.child_relations.count() == 1
+    assert h1_c[0].child_pid == h1v2
+    assert h1_c[0].order == 0
 
 
 def test_version_api_methods(app, db, pids):
@@ -142,9 +203,9 @@ def test_version_api_methods(app, db, pids):
     assert PIDVersionRelation.is_head(h2v1) is False
 
     # False for non-versioned PIDs and Collection concepts
-    assert PIDVersionRelation.is_head(pid1) is False
-    assert PIDVersionRelation.is_head(c1) is False
-    assert PIDVersionRelation.is_head(c1r1) is False
+    assert PIDVersionRelation.is_head(pid1) is False  # no Head PID
+    assert PIDVersionRelation.is_head(c1) is False  # Collection PID
+    assert PIDVersionRelation.is_head(c1r1) is False  # Collection resource
     assert PIDVersionRelation.is_head(c1r2) is False
 
     assert PIDVersionRelation.get_head(h1) == h1
@@ -159,27 +220,82 @@ def test_version_api_methods(app, db, pids):
     assert PIDVersionRelation.get_head(c1) is None
     assert PIDVersionRelation.get_head(c1r1) is None
 
+    # Test 'is_version'/'get_all_versions'
+    # True only for Version PIDs, False otherwise
+    assert PIDVersionRelation.is_version(h1v1) is True
+    assert PIDVersionRelation.is_version(h1v2) is True
+    assert PIDVersionRelation.is_version(h1) is False
+    assert PIDVersionRelation.is_version(c1) is False
+    assert PIDVersionRelation.is_version(c1r1) is False
+    assert PIDVersionRelation.is_version(c1r2) is False
+    assert PIDVersionRelation.is_version(pid1) is False
+
+    # Test 'get_all_versions'
+    # Return all versions for Head and Version PID
     assert [h1v1, h1v2] == PIDVersionRelation.get_all_versions(h1)
     assert [h1v1, h1v2] == PIDVersionRelation.get_all_versions(h1v2)
+    # Not supported for non-versioned PIDs and Collections
+    assert PIDVersionRelation.get_all_versions(pid1) is None
+    assert PIDVersionRelation.get_all_versions(c1) is None
+    assert PIDVersionRelation.get_all_versions(c1r1) is None
 
+    # Test 'is_latest'/'get_latest'
     assert PIDVersionRelation.get_latest(h1) == h1v2
+    assert PIDVersionRelation.get_latest(h1v1) == h1v2
+    assert PIDVersionRelation.get_latest(h1v2) == h1v2
+    # Not supported for non-versioned PIDs and Collections
+    assert PIDVersionRelation.get_latest(pid1) is None
+    assert PIDVersionRelation.get_latest(c1) is None
+    assert PIDVersionRelation.get_latest(c1r1) is None
+    # NOTE: 'is_latest' is False for Head PID!
+    assert PIDVersionRelation.is_latest(h1) is False
+    assert PIDVersionRelation.is_latest(h1v1) is False
+    assert PIDVersionRelation.is_latest(h1v2) is True
+    # False for non-versioned PIDs and Collections
+    assert PIDVersionRelation.is_latest(pid1) is False
+    assert PIDVersionRelation.is_latest(c1) is False
+    assert PIDVersionRelation.is_latest(c1r1) is False
 
 
-def test_head_pid_methods(app, db):
+def test_version_api_edit(app, db, pids):
+    h1, h1v1, h1v2, h2, h2v1, c1, c1r1, c1r2, pid1 = \
+        (pids[p] for p in ['h1', 'h1v1', 'h1v2', 'h2', 'h2v1',
+                           'c1', 'c1r1', 'c1r2', 'pid1'])
+    assert h1.get_redirect() == h1v2
+    assert PIDVersionRelation.get_head(pid1) is None
+    assert PIDVersionRelation.get_latest(h1) == h1v2
+    assert PIDVersionRelation.get_latest(pid1) is None
+    PIDVersionRelation.insert_version(h1, pid1, -1)
+    assert h1.get_redirect() == pid1
+    assert PIDVersionRelation.get_latest(h1) == pid1
+    assert PIDVersionRelation.get_latest(pid1) == pid1
+    assert PIDVersionRelation.get_head(pid1) == h1
+
+    PIDVersionRelation.remove_version(pid1)
+    assert h1.get_redirect() == h1v2
+    assert PIDVersionRelation.get_latest(h1) == h1v2
+    assert PIDVersionRelation.get_latest(pid1) is None
+    assert PIDVersionRelation.get_head(pid1) is None
+
+    PIDVersionRelation.insert_version(h1, pid1, 0)
+    assert h1.get_redirect() == h1v2
+    assert PIDVersionRelation.get_latest(h1) == h1v2
+    assert PIDVersionRelation.get_latest(pid1) == h1v2
+    assert PIDVersionRelation.get_head(pid1) == h1
+
+
+def test_version_api_create_head(app, db, pids):
     """Test Head PID methods."""
-
     # Create an orphan PID
-    pid = PersistentIdentifier.create('doi', 'foobar.v1')
-    db.session.commit()
+    pid = PersistentIdentifier.create('doi', 'barr.v1')
 
     assert PIDVersionRelation.is_head(pid) is False
     assert PIDVersionRelation.get_head(pid) is None
 
     # Add a Head PID to the orphan PID
-    head_pid = PIDVersionRelation.create_head(pid, 'foobar')
+    head_pid = PIDVersionRelation.create_head(pid, 'barr')
     # Check if Head PID redirects to the Version PID
     assert head_pid.get_redirect() == pid
-    db.session.commit()
 
     assert PIDVersionRelation.is_head(head_pid) is True
     assert PIDVersionRelation.is_head(pid) is False

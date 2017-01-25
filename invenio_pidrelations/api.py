@@ -27,6 +27,7 @@
 from __future__ import absolute_import, print_function
 
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus
+from invenio_db import db
 from .models import PIDRelation, RelationType
 
 
@@ -122,20 +123,36 @@ class PIDVersionRelation(object):
     def get_all_versions(cls, pid):
         """
         Works both for Head PIDS (return the children) and Version PIDs (return
-        all sibling including self)
+        all sibling including self).
+        Return None otherwise.
         """
         head = cls.get_head(pid)
+        if head is None:
+            return None
         return [pr.child_pid for pr in
                 head.child_relations.order_by(PIDRelation.order).all()]
 
-    @staticmethod
-    def insert_version(head_pid, pid, index):
-        # As regular insert but with Head PID redirect
-        pass
+    @classmethod
+    def insert_version(cls, head_pid, pid, index):
+        """Insert 'pid' to the versioning scheme."""
+        # TODO: For linking usecase: check if 'pid' has a Head already,
+        #       if so, remove it first
+        with db.session.begin_nested():
+            PIDRelation.insert(head_pid, pid, RelationType.VERSION,
+                               index=index)
+            latest_pid = cls.get_latest(head_pid)
+            head_pid.redirect(latest_pid)
 
-    @staticmethod
-    def remove_version(pid):
-        pass
+    @classmethod
+    def remove_version(cls, pid):
+        """Remove the 'pid' from the versioning scheme."""
+        # TODO: Implement removing of a single versioned element (remove Head?)
+        with db.session.begin_nested():
+            head_pid = cls.get_head(pid)
+            PIDRelation.remove(head_pid, pid, RelationType.VERSION,
+                               reorder=True)
+            latest_pid = cls.get_latest(head_pid)
+            head_pid.redirect(latest_pid)
 
 
 __all__ = (

@@ -39,7 +39,7 @@ from invenio_pidrelations import InvenioPIDRelations
 
 from sqlalchemy_utils.functions import create_database, database_exists
 from invenio_pidrelations.models import PIDRelation, RelationType
-from invenio_pidstore.models import PersistentIdentifier
+from invenio_pidstore.models import PersistentIdentifier, PIDStatus
 
 
 @pytest.yield_fixture()
@@ -90,19 +90,23 @@ def db(app):
 def pids(db):
     """Test PIDs fixture."""
     # TODO: Head PIDs do not have redirects as they are created outside API
-    h1 = PersistentIdentifier.create('doi', 'foobar', object_type='rec')
+    h1 = PersistentIdentifier.create('doi', 'foobar', object_type='rec',
+                                     status=PIDStatus.REGISTERED)
     h1v1 = PersistentIdentifier.create('doi', 'foobar.v1', object_type='rec')
     h1v2 = PersistentIdentifier.create('doi', 'foobar.v2', object_type='rec')
     PIDRelation.create(h1, h1v2, RelationType.VERSION, 1)
     PIDRelation.create(h1, h1v1, RelationType.VERSION, 0)
+    h1.redirect(h1v2)
 
-    h2 = PersistentIdentifier.create('doi', 'spam')
+    h2 = PersistentIdentifier.create('doi', 'spam', object_type='rec',
+                                     status=PIDStatus.REGISTERED)
     h2v1 = PersistentIdentifier.create('doi', 'spam.v1')
     PIDRelation.create(h2, h2v1, RelationType.VERSION, 0)
+    h2.redirect(h2v1)
 
-    c1 = PersistentIdentifier.create('doi', 'collA')
-    c1r1 = PersistentIdentifier.create('doi', 'res1')
-    c1r2 = PersistentIdentifier.create('doi', 'res2')
+    c1 = PersistentIdentifier.create('doi', 'bazbar')
+    c1r1 = PersistentIdentifier.create('doi', 'resource1')
+    c1r2 = PersistentIdentifier.create('doi', 'resource2')
 
     pid1 = PersistentIdentifier.create('doi', 'eggs')
     PIDRelation.create(c1, c1r1, RelationType.COLLECTION, None)
