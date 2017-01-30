@@ -62,10 +62,84 @@ from invenio_db import InvenioDB
 from invenio_pidstore import InvenioPIDStore
 
 from invenio_pidrelations import InvenioPIDRelations
+from flask import Flask, redirect, render_template, request, url_for
+from invenio_indexer import InvenioIndexer
+from invenio_db import InvenioDB, db
+from invenio_pidstore import InvenioPIDStore
+from invenio_pidstore.providers.recordid import RecordIdProvider
+from invenio_pidstore.resolver import Resolver
+from invenio_records import InvenioRecords
+from invenio_records.api import Record
+from marshmallow import Schema, fields
+
+from invenio_pidrelations import InvenioPIDRelations
+from invenio_pidrelations.contrib.records import versioned_minter
+from invenio_pidrelations.models import PIDRelation, RelationType
+from invenio_pidrelations.serializers.schemas import RelationsSchema
+from invenio_pidrelations.versions_api import PIDVersioning
+from invenio_pidrelations.views import blueprint as pidrelations_blueprint
 
 # Create Flask application
-app = Flask(__name__)
-Babel(app)
+app = Flask(__name__, template_folder='.')
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+
 InvenioDB(app)
 InvenioPIDStore(app)
 InvenioPIDRelations(app)
+app.register_blueprint(pidrelations_blueprint)
+InvenioIndexer(app)
+InvenioRecords(app)
+
+record_resolver = Resolver(
+    pid_type='recid', object_type='rec', getter=Record.get_record
+)
+
+
+class SimpleRecordSchema(Schema):
+    """Tiny schema for our simple record."""
+
+    recid = fields.Str()
+    title = fields.Str()
+    body = fields.Str()
+
+    relations = fields.Nested(RelationsSchema, dump_only=True)
+
+
+@app.route('/')
+def index():
+    heads = PIDVersioning.get_parents()
+    return render_template('index.html', heads=heads)
+
+
+@app.route('/create', methods=['POST'])
+def create():
+    create_simple_record(request.form)
+    return redirect(url_for('index'))
+
+
+@app.template_filter()
+def to_record(pid):
+    return SimpleRecordSchema().dump(record_resolver.resolve(pid.pid_value)[1])
+
+
+def create_simple_record(data):
+
+    # Create the record and mint a PID
+    data, errors = SimpleRecordSchema().load(data)
+    parent = data.get('parent')
+    if parent != 'new':
+        data['_relations'] = {'version': {'parent': parent}}
+    rec = Record.create(data)
+    rec.commit()
+
+    # The `invenio_pidrelations.contrib.records.versioned_minter` will take
+    # care of creating the necessary PIDRelation entries.
+    record_minter(rec.id, rec)
+    db.session.commit()
+
+
+@versioned_minter(pid_type='recid')
+def record_minter(record_uuid, data):
+    provider = RecordIdProvider.create('rec', record_uuid)
+    data['control_number'] = provider.pid.pid_value
+    return provider.pid

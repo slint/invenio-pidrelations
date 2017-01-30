@@ -34,6 +34,7 @@ from invenio_pidstore.models import PersistentIdentifier
 from speaklater import make_lazy_gettext
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import backref
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy_utils.models import Timestamp
 
 _ = make_lazy_gettext(lambda: gettext)

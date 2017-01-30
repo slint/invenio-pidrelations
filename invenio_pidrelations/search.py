@@ -22,38 +22,30 @@
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
 
-"""Invenio module that adds PID relations to the Invenio-PIDStore module."""
+from __future__ import absolute_import, print_function
 
-PIDRELATION_RELATION_TYPE_TITLES = {
-    'ORDERED': 'Ordered',
-    'UNORDERED': 'Unordered',
-    'VERSION': 'Version',
-}
+from elasticsearch_dsl.query import Bool, Q
 
-PIDRELATIONS_RELATION_TYPES = {
-    'ORDERED': 0,
-    'UNORDERED': 1,
-    'VERSION': 2,
-}
-"""Relation types definition."""
+class LatestVersionFilter(object):
+    """Shortcut for defining default filters with query parser."""
 
-# TODO: Remove after refactorinf
-# PIDRELATIONS_RELATION_TYPES = dict(
-#     VERSION=0,
-#     COLLECTION=1,
-#     RECORD_DRAFT=2,
-# )
+    def __init__(self, query=None, query_parser=None):
+        """Build filter property with query parser."""
+        self._query = Q('term', **{'relation.version.is_latest': True})
+        if query is not None:
+            self._query = Bool(
+                must=[
+                    query,
+                    self._query
+                ],
+            )
+        self.query_parser = query_parser or (lambda x: x)
 
-PIDRELATIONS_DEFAULT_VALUE = 'foobar'
-"""Default value for the application."""
+    @property
+    def query(self):
+        """Build lazy query if needed."""
+        return self._query() if callable(self._query) else self._query
 
-PIDRELATIONS_INDEXED_RELATIONS = dict(
-    recid=dict(
-        field='version',
-        api='invenio_pidrelations.versions_api:PIDVersioning',
-        # FIXME: for now the API does not provide any way to know if a relation
-        # is ordered or not. Thus we write it here.
-        ordered=True,
-    )
-)
-"""Default PID fetcher."""
+    def __get__(self, obj, objtype):
+        """Return parsed query."""
+        return self.query_parser(self.query)

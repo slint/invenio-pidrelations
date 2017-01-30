@@ -12,3 +12,5 @@ cd $DIR
 export FLASK_APP=app.py
 
 # Setup fixtures
+flask db init
+flask db create

@@ -26,7 +26,37 @@
 
 from __future__ import absolute_import, print_function
 
+from copy import deepcopy
+
 from flask_babelex import gettext as _
+from werkzeug.utils import cached_property
+
+from . import config
+from .indexers import index_relations
+from .utils import obj_or_import_string
+
+
+class _InvenioPIDRelationsState(object):
+    """InvenioPIDRelations REST state."""
+
+    def __init__(self, app):
+        """Initialize state."""
+        self.app = app
+
+    @cached_property
+    def relation_types(self):
+        return self.app.config.get('PIDRELATIONS_RELATION_TYPES', {})
+
+    @cached_property
+    def indexed_relations(self):
+        """Load the configuration for indexed relations."""
+        indexed = self.app.config.get('PIDRELATIONS_INDEXED_RELATIONS')
+        if not indexed:
+            return {}
+        result = deepcopy(indexed)
+        for pid_value, conf in result.items():
+            conf.update(dict(api=obj_or_import_string(conf['api'])))
+        return result
 
 from . import config
 
@@ -46,7 +76,13 @@ class InvenioPIDRelations(object):
     def init_app(self, app):
         """Flask application initialization."""
         self.init_config(app)
-        app.extensions['invenio-pidrelations'] = self
+        # app.register_blueprint(blueprint)
+        app.extensions['invenio-pidrelations'] = _InvenioPIDRelationsState(app)
+
+        # Register indexers if they are required
+        if app.config.get('PIDRELATIONS_INDEXED_RELATIONS', {}):
+            from invenio_indexer.signals import before_record_index
+            before_record_index.connect(index_relations, sender=app)
 
     def init_config(self, app):
         """Initialize configuration."""

@@ -56,6 +56,14 @@ extras_require = {
     'sqlite': [
         'invenio-db>=1.0.0b1',
     ],
+    'records': [
+        'invenio-deposit>=1.0.0a7',
+        'invenio-records-files>=1.0.0a8',
+        'invenio-records>=1.0.0b1',
+    ],
+    'indexer': [
+        'invenio-indexer>=1.0.0a9',
+    ],
 }
 
 extras_require['all'] = []
@@ -71,6 +79,8 @@ install_requires = [
     'Flask-BabelEx>=0.9.2',
     'invenio-pidstore>=1.0.0b1',
     'SQLAlchemy>=1.0.9',
+    'marshmallow>=2.12.2',
+    'six>=1.10',
 ]
 
 packages = find_packages()
@@ -99,6 +109,12 @@ setup(
     entry_points={
         'invenio_base.apps': [
             'invenio_pidrelations = invenio_pidrelations:InvenioPIDRelations',
+        ],
+        'invenio_base.api_apps': [
+            'invenio_pidrelations = invenio_pidrelations:InvenioPIDRelations',
+        ],
+        'invenio_base.blueprints': [
+            'invenio_pidrelations = invenio_pidrelations.views:blueprint',
         ],
         'invenio_db.models': [
             'invenio_pidrelations = invenio_pidrelations.models',

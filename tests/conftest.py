@@ -42,6 +42,16 @@ from sqlalchemy_utils.functions import create_database, database_exists
 from invenio_pidrelations import InvenioPIDRelations
 from invenio_pidrelations.contrib.versioning import PIDVersioning
 from invenio_pidrelations.models import PIDRelation
+from invenio_indexer import InvenioIndexer
+from invenio_indexer.api import RecordIndexer
+from invenio_pidstore import InvenioPIDStore
+from invenio_pidstore.models import PersistentIdentifier, PIDStatus
+from invenio_records import InvenioRecords, Record
+from invenio_search import InvenioSearch, current_search, current_search_client
+from sqlalchemy_utils.functions import create_database, database_exists
+
+from invenio_pidrelations import InvenioPIDRelations
+from invenio_pidrelations.models import PIDRelation, RelationType
 
 
 @pytest.yield_fixture()
@@ -66,6 +76,9 @@ def base_app(instance_path):
     InvenioPIDStore(app_)
     InvenioPIDRelations(app_)
     InvenioDB(app_)
+    InvenioRecords(app_)
+    InvenioIndexer(app_)
+    InvenioSearch(app_)
     Babel(app_)
     return app_
 
@@ -96,12 +109,14 @@ def pids(app, db):
                                      status=PIDStatus.REGISTERED)
     h1v1 = PersistentIdentifier.create('doi', 'foobar.v1', object_type='rec')
     h1v2 = PersistentIdentifier.create('doi', 'foobar.v2', object_type='rec')
+    h1v3 = PersistentIdentifier.create('doi', 'foobar.v3', object_type='rec')
 
     ORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['ORDERED']
     UNORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['UNORDERED']
-    PIDRelation.create(h1, h1v2, ORDERED, 1)
     PIDRelation.create(h1, h1v1, ORDERED, 0)
-    h1.redirect(h1v2)
+    PIDRelation.create(h1, h1v2, ORDERED, 1)
+    PIDRelation.create(h1, h1v3, ORDERED, 2)
+    h1.redirect(h1v3)
 
     h2 = PersistentIdentifier.create('doi', 'spam', object_type='rec',
                                      status=PIDStatus.REGISTERED)
@@ -120,6 +135,7 @@ def pids(app, db):
         'h1': h1,
         'h1v1': h1v1,
         'h1v2': h1v2,
+        'h1v3': h1v3,
         'h2': h2,
         'h2v1': h2v1,
         'c1': c1,
@@ -143,3 +159,41 @@ def version_pids(app, db):
         'h1v1': h1v1,
         'h1v2': h1v2,
     }
+
+
+@pytest.fixture()
+def records(pids, db):
+    pid_versions = ['h1v1', 'h1v2', 'h2v1']
+    schema = {
+        'type': 'object',
+        'properties': {
+            'title': {'type': 'string'},
+        },
+    }
+    data = {
+        name: {'title': 'Test version {}'.format(name),
+               'control_number': pids[name].pid_value,
+               '$schema': schema}
+        for name in pid_versions
+    }
+    records = dict()
+    for name in pid_versions:
+        record = Record.create(data[name])
+        pids[name].assign('rec', record.id)
+        records[name] = record
+    return records
+
+
+@pytest.fixture()
+def indexed_records(records):
+    current_search_client.indices.flush('*')
+    # delete all elasticsearch indices and recreate them
+    for deleted in current_search.delete(ignore=[404]):
+        pass
+    for created in current_search.create(None):
+        pass
+    # flush the indices so that indexed records are searchable
+    for pid_name, record in records.items():
+        RecordIndexer().index(record)
+    current_search_client.indices.flush('*')
+    return records

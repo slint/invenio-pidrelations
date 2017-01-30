@@ -22,38 +22,6 @@
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
 
-"""Invenio module that adds PID relations to the Invenio-PIDStore module."""
-
-PIDRELATION_RELATION_TYPE_TITLES = {
-    'ORDERED': 'Ordered',
-    'UNORDERED': 'Unordered',
-    'VERSION': 'Version',
-}
-
-PIDRELATIONS_RELATION_TYPES = {
-    'ORDERED': 0,
-    'UNORDERED': 1,
-    'VERSION': 2,
-}
-"""Relation types definition."""
-
-# TODO: Remove after refactorinf
-# PIDRELATIONS_RELATION_TYPES = dict(
-#     VERSION=0,
-#     COLLECTION=1,
-#     RECORD_DRAFT=2,
-# )
-
-PIDRELATIONS_DEFAULT_VALUE = 'foobar'
-"""Default value for the application."""
-
-PIDRELATIONS_INDEXED_RELATIONS = dict(
-    recid=dict(
-        field='version',
-        api='invenio_pidrelations.versions_api:PIDVersioning',
-        # FIXME: for now the API does not provide any way to know if a relation
-        # is ordered or not. Thus we write it here.
-        ordered=True,
-    )
-)
-"""Default PID fetcher."""
+invenio-indexer>=1.0.0a7
+invenio-records>=1.0.0b1
+invenio-search>=1.0.0a9

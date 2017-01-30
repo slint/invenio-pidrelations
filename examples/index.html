@@ -1,0 +1,114 @@
+{# -*- coding: utf-8 -*-
+#
+# This file is part of Invenio.
+# Copyright (C) 2017 CERN.
+#
+# Invenio is free software; you can redistribute it
+# and/or modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of the
+# License, or (at your option) any later version.
+#
+# Invenio is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Invenio; if not, write to the
+# Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+# MA 02111-1307, USA.
+#
+# In applying this license, CERN does not
+# waive the privileges and immunities granted to it by virtue of its status
+# as an Intergovernmental Organization or submit itself to any jurisdiction.
+-#}
+
+{# {%- from "invenio_pidrelations/macros/pid_versions.html" import pid_versions_dropdown -%} #}
+<!DOCTYPE html>
+<html>
+<head>
+<title>PIDRelations Example Application</title>
+<style type="text/css">
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.content {
+  display: flex;
+  justify-content: space-around;
+  width: 700px;
+  align-items: stretch;
+  align-content: stretch;
+}
+
+.version-tree {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.record-form {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 200px;
+}
+
+</style>
+</head>
+
+<body>
+<h1>This is a versioned Record example</h1>
+<div class="content">
+  <div class="version-tree">
+    <h2>Record Versions</h2>
+    {% if heads %}
+      <ul>
+        {% for head in heads %}
+          <li>[{{ head.pid_value }}]
+            <ul>
+            {% for child in head | all_versions %}
+              {% set record = child | to_record %}
+              <li>[{{ child.pid_value }}] - {{ record.title }} <br/> <small>{{ record.body }}</small></li>
+            {% endfor %}
+            </ul>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+    <p>No records available. Create one using the form below:</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>Create a new record</h2>
+    <form class="record-form" action="/create" method="post" accept-charset="utf-8">
+      <div>
+        <label>Title</label>
+        <input type="text" name="title" required>
+      </div>
+      <div>
+        <label>Body</label>
+        <textarea name="body" required></textarea>
+      </div>
+      <div>
+        <label>Parent</label><br/>
+        <select name="parent">
+          <option value="new" selected>New head</option>
+          {% for head in heads %}
+            {% set latest_record = head | latest_pid_version %}
+            <option value="{{ head.pid_value }}">{{ head.pid_value }} (from [{{ latest_record.pid_value }}])</option>
+            }
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <button type="submit">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+</body>
+</html>

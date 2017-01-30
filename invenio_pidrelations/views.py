@@ -1,4 +1,5 @@
-{#
+# -*- coding: utf-8 -*-
+#
 # This file is part of Invenio.
 # Copyright (C) 2017 CERN.
 #
@@ -20,13 +21,35 @@
 # In applying this license, CERN does not
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
-#}
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-  </head>
-  <body>
-    {%- block page_body %}{%- endblock page_body %}
-  </body>
-</html>
+
+"""Views for PID Relations."""
+
+from flask import Blueprint
+
+from .versions_api import PIDVersioning
+
+blueprint = Blueprint(
+    'invenio_pidrelation',
+    __name__,
+    template_folder='templates'
+)
+
+
+@blueprint.app_template_filter()
+def latest_pid_version(pid):
+    return PIDVersioning(child=pid).get_last_child()
+
+
+@blueprint.app_template_filter()
+def head_pid_version(pid):
+    return PIDVersioning.get_parent(pid)
+
+
+@blueprint.app_template_test()
+def latest_version(pid):
+    return PIDVersioning.is_latest(pid)
+
+
+@blueprint.app_template_filter()
+def all_versions(pid):
+    return PIDVersioning(pid).children()
