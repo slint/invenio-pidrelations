@@ -26,84 +26,113 @@
 
 from __future__ import absolute_import, print_function
 
-from invenio_pidstore.models import PersistentIdentifier, PIDStatus
 from invenio_db import db
-from .models import PIDRelation, RelationType
+from invenio_pidstore.models import PersistentIdentifier
+from sqlalchemy.exc import IntegrityError
+
+from .models import PIDRelation
 
 
-class PIDVersionRelation(object):
+class PIDConcept(object):
     """API for PID version relations."""
 
-    def __init__(self, pid):
-        # TODO: Use as a wrapper?
-        pass
-
-    @staticmethod
-    def create_head(pid, head_pid_value):
-        """
-        Create a Head PID for the Version PID.
-
-        :param pid: Version PID for which a Head PID should be created.
-        :type pid: invenio_pidstore.models.PersistentIdentifier
-        :param head_pid_value: Head PID value of the new Head PID
-        :type head_pid_value: str
-        :return: Resulting Head PID
-        :rtype: PersistentIdentifier
-        """
-        head_pid = PersistentIdentifier.create(
-            pid_type=pid.pid_type,
-            pid_value=head_pid_value,
-            object_type=pid.object_type,
-            status=PIDStatus.REGISTERED
-        )
-        head_pid.redirect(pid)
-        PIDRelation.create(head_pid, pid, RelationType.VERSION, 0)
-        return head_pid
-
-    @staticmethod
-    def is_head(pid):
-        """Determine if 'pid' is a Head PID."""
-        return PIDRelation.has_children(pid, RelationType.VERSION)
-
-    @classmethod
-    def get_head(cls, pid):
-        """
-        Get the Head PID of a PID in the argument.
-
-        If 'pid' is already the Head PID, return it, otherwise
-        return the Head PID as defined in the relation table.
-        In case the PID does not have a Head PID, return None.
-        """
-
-        if cls.is_head(pid):
-            return pid
+    def __init__(self, child=None, parent=None, relation_type=None,
+                 relation=None):
+        """Create a PID concept API object."""
+        if relation:
+            self.relation = relation
+            self.child = relation.child
+            self.parent = relation.parent
+            self.relation_type = relation.relation_type
         else:
-            return PIDRelation.parent(pid, RelationType.VERSION)
+            self.child = child
+            self.parent = parent
+            self.relation_type = relation_type
+            # TODO:
+            # if all(v is not None for v in (child, parent, relation_type)):
+            #    self.relation = PIDRelation.query.get(...)
+            # NOTE: Do not query.filter(...) with partial information
+            # as you might guess wrong if the relation does not exist
 
-    @staticmethod
-    def is_version(pid):
+    @property
+    def parents(self):
+        """Return the PID parents for given relation."""
+        return db.session.query(PersistentIdentifier).join(
+            PIDRelation,
+            PIDRelation.parent_id == PersistentIdentifier.id
+        ).filter(
+            PIDRelation.child_id == self.child.id,
+            PIDRelation.relation_type == self.relation_type
+        )
+
+    @property
+    def has_parents(self):
+        """Determine if there are any parents in this relationship."""
+        return self.parents.count() > 0
+
+    @property
+    def parent(self):
+        """Return the parent of the PID in given relation.
+
+        NOTE: Not supporting relations, which allow for multiple parents,
+              e.g. Collection.
+
+        None if not found
+        Raises 'sqlalchemy.orm.exc.MultipleResultsFound' for multiple parents.
         """
-        Determine if 'pid' is a Version PID.
+        if self._parent is None:
+            parent = self.parents.one_or_none()
+            self._parent = parent
+        return self._parent
 
-        Resolves as True for any PID which has a Head PID, False otherwise.
-        """
-        return PIDRelation.parents(pid, RelationType.VERSION).count() == 1
+    @parent.setter
+    def parent(self, parent):
+        self._parent = parent
 
-    @classmethod
-    def is_latest(cls, pid):
+    @property
+    def is_parent(self):
+        """Determine if the provided parent is a parent in the relation."""
+        return self.has_children
+
+    def get_children(self, ordered=False):
+        """Get all children of the parent."""
+        q = db.session.query(PersistentIdentifier).join(
+            PIDRelation,
+            PIDRelation.child_id == PersistentIdentifier.id
+        ).filter(
+            PIDRelation.parent_id == self.parent.id,
+            PIDRelation.relation_type == self.relation_type
+        )
+        if ordered:
+            return q.order_by(PIDRelation.index.asc())
+        else:
+            return q
+
+    @property
+    def children(self):
+        """Children of the parent."""
+        return self.get_children()
+
+    @property
+    def has_children(self):
+        """Determine if there are any children in this relationship."""
+        return self.children.count() > 0
+
+    @property
+    def is_last_child(self):
         """
         Determine if 'pid' is the latest version of a resource.
 
         Resolves True for Versioned PIDs which are the oldest of its siblings.
         False otherwise, also for Head PIDs.
         """
-        latest_pid = cls.get_latest(pid)
-        if latest_pid is None:
+        last_child = self.last_child
+        if last_child is None:
             return False
-        return latest_pid == pid
+        return last_child == self.child
 
-    @classmethod
-    def get_latest(cls, pid):
+    @property
+    def last_child(self):
         """
         Get the latest PID as pointed by the Head PID.
 
@@ -111,50 +140,71 @@ class PIDVersionRelation(object):
         If the 'pid' is a Version PID, return the latest of its siblings.
         Return None for the non-versioned PIDs.
         """
+        return self.get_children(ordered=False).filter(
+            PIDRelation.index.isnot(None)).order_by(
+                PIDRelation.index.desc()).first()
 
-        head = cls.get_head(pid)
-        if head is None:
-            return None
-        else:
-            return head.child_relations.order_by(
-                PIDRelation.order.desc()).first().child_pid
-
-    @classmethod
-    def get_all_versions(cls, pid):
+    @property
+    def is_child(self):
         """
-        Works both for Head PIDS (return the children) and Version PIDs (return
-        all sibling including self).
-        Return None otherwise.
+        Determine if 'pid' is a Version PID.
+
+        Resolves as True for any PID which has a Head PID, False otherwise.
         """
-        head = cls.get_head(pid)
-        if head is None:
-            return None
-        return [pr.child_pid for pr in
-                head.child_relations.order_by(PIDRelation.order).all()]
+        return self.has_parents
 
-    @classmethod
-    def insert_version(cls, head_pid, pid, index):
-        """Insert 'pid' to the versioning scheme."""
-        # TODO: For linking usecase: check if 'pid' has a Head already,
-        #       if so, remove it first
-        with db.session.begin_nested():
-            PIDRelation.insert(head_pid, pid, RelationType.VERSION,
-                               index=index)
-            latest_pid = cls.get_latest(head_pid)
-            head_pid.redirect(latest_pid)
+    def insert_child(self, child, index=None):
+        """Insert a new child into a PID concept.
 
-    @classmethod
-    def remove_version(cls, pid):
-        """Remove the 'pid' from the versioning scheme."""
-        # TODO: Implement removing of a single versioned element (remove Head?)
+        Argument 'index' can take the following values:
+            0,1,2,... - insert child PID at the specified position
+            -1 - insert the child PID at the last position
+            None - insert child without order (no re-ordering is done)
+
+            NOTE: If 'index' is specified, all sibling relations should
+                  have PIDRelation.index information.
+
+        """
+        try:
+            with db.session.begin_nested():
+                if index is not None:
+                    child_relations = self.parent.child_relations.filter(
+                        PIDRelation.relation_type ==
+                        self.relation_type).order_by(PIDRelation.index).all()
+                    relation_obj = PIDRelation.create(
+                        self.parent, child, self.relation_type, None)
+                    if index == -1:
+                        child_relations.append(relation_obj)
+                    else:
+                        child_relations.insert(index, relation_obj)
+                    for idx, c in enumerate(child_relations):
+                        c.index = idx
+                else:
+                    relation_obj = PIDRelation.create(
+                        self.parent, child, self.relation_type, None)
+            # TODO: self.child = child
+            # TODO: mark 'children' cached_property as dirty
+        except IntegrityError:
+            raise Exception("PID Relation already exists.")
+
+    def remove_child(self, child, reorder=False):
+        """Remove a child from a PID concept."""
         with db.session.begin_nested():
-            head_pid = cls.get_head(pid)
-            PIDRelation.remove(head_pid, pid, RelationType.VERSION,
-                               reorder=True)
-            latest_pid = cls.get_latest(head_pid)
-            head_pid.redirect(latest_pid)
+            relation = PIDRelation.query.filter_by(
+                parent_id=self.parent.id,
+                child_id=child.id,
+                relation_type=self.relation_type).one()
+            db.session.delete(relation)
+            if reorder:
+                child_relations = self.parent.child_relations.filter(
+                    PIDRelation.relation_type == self.relation_type).order_by(
+                        PIDRelation.index).all()
+                for idx, c in enumerate(child_relations):
+                    c.index = idx
+        # TODO: self.child = None
+        # TODO: mark 'children' cached_property as dirty
 
 
 __all__ = (
-    'PIDVersionRelation',
+    'PIDConcept',
 )

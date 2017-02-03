@@ -26,20 +26,22 @@
 
 from __future__ import absolute_import, print_function
 
-import shutil
 import os
+import shutil
 import tempfile
 
 import pytest
 from flask import Flask
 from flask_babelex import Babel
-from invenio_db import InvenioDB, db as db_
+from invenio_db import db as db_
+from invenio_db import InvenioDB
 from invenio_pidstore import InvenioPIDStore
-from invenio_pidrelations import InvenioPIDRelations
-
-from sqlalchemy_utils.functions import create_database, database_exists
-from invenio_pidrelations.models import PIDRelation, RelationType
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus
+from sqlalchemy_utils.functions import create_database, database_exists
+
+from invenio_pidrelations import InvenioPIDRelations
+from invenio_pidrelations.contrib.versioning import PIDVersioning
+from invenio_pidrelations.models import PIDRelation
 
 
 @pytest.yield_fixture()
@@ -87,21 +89,24 @@ def db(app):
 
 
 @pytest.fixture()
-def pids(db):
+def pids(app, db):
     """Test PIDs fixture."""
     # TODO: Head PIDs do not have redirects as they are created outside API
     h1 = PersistentIdentifier.create('doi', 'foobar', object_type='rec',
                                      status=PIDStatus.REGISTERED)
     h1v1 = PersistentIdentifier.create('doi', 'foobar.v1', object_type='rec')
     h1v2 = PersistentIdentifier.create('doi', 'foobar.v2', object_type='rec')
-    PIDRelation.create(h1, h1v2, RelationType.VERSION, 1)
-    PIDRelation.create(h1, h1v1, RelationType.VERSION, 0)
+
+    ORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['ORDERED']
+    UNORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['UNORDERED']
+    PIDRelation.create(h1, h1v2, ORDERED, 1)
+    PIDRelation.create(h1, h1v1, ORDERED, 0)
     h1.redirect(h1v2)
 
     h2 = PersistentIdentifier.create('doi', 'spam', object_type='rec',
                                      status=PIDStatus.REGISTERED)
     h2v1 = PersistentIdentifier.create('doi', 'spam.v1')
-    PIDRelation.create(h2, h2v1, RelationType.VERSION, 0)
+    PIDRelation.create(h2, h2v1, ORDERED, 0)
     h2.redirect(h2v1)
 
     c1 = PersistentIdentifier.create('doi', 'bazbar')
@@ -109,8 +114,8 @@ def pids(db):
     c1r2 = PersistentIdentifier.create('doi', 'resource2')
 
     pid1 = PersistentIdentifier.create('doi', 'eggs')
-    PIDRelation.create(c1, c1r1, RelationType.COLLECTION, None)
-    PIDRelation.create(c1, c1r2, RelationType.COLLECTION, None)
+    PIDRelation.create(c1, c1r1, UNORDERED, None)
+    PIDRelation.create(c1, c1r2, UNORDERED, None)
     return {
         'h1': h1,
         'h1v1': h1v1,
@@ -121,4 +126,20 @@ def pids(db):
         'c1r1': c1r1,
         'c1r2': c1r2,
         'pid1': pid1,
+    }
+
+
+@pytest.fixture()
+def version_pids(app, db):
+    """Versioned PIDs fixture with one parent and two versions."""
+    h1v1 = PersistentIdentifier.create('doi', 'foobar.v1', object_type='rec')
+    h1v2 = PersistentIdentifier.create('doi', 'foobar.v2', object_type='rec')
+    pv = PIDVersioning(child=h1v1)
+    pv.create_parent('foobar')
+    pv.insert_child(h1v2)
+    h1 = pv.parent
+    return {
+        'h1': h1,
+        'h1v1': h1v1,
+        'h1v2': h1v2,
     }

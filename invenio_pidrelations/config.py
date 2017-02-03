@@ -24,8 +24,14 @@
 
 """Invenio module that adds PID relations to the Invenio-PIDStore module."""
 
-# TODO: This is an example file. Remove it if your package does not use any
-# extra configuration variables.
+PIDRELATION_RELATION_TYPE_TITLES = {
+    'ORDERED': 'Ordered',
+    'UNORDERED': 'Unordered',
+    'VERSION': 'Version',
+}
 
-PIDRELATIONS_DEFAULT_VALUE = 'foobar'
-"""Default value for the application."""
+PIDRELATIONS_RELATION_TYPES = {
+    'ORDERED': 0,
+    'UNORDERED': 1,
+    'VERSION': 2,
+}

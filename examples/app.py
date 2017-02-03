@@ -58,10 +58,10 @@ from __future__ import absolute_import, print_function
 
 from flask import Flask
 from flask_babelex import Babel
+from invenio_db import InvenioDB
+from invenio_pidstore import InvenioPIDStore
 
 from invenio_pidrelations import InvenioPIDRelations
-from invenio_pidstore import InvenioPIDStore
-from invenio_db import InvenioDB
 
 # Create Flask application
 app = Flask(__name__)

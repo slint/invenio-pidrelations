@@ -25,6 +25,7 @@
 """PIDRelation JSON Schema."""
 
 from marshmallow import Schema, fields
+
 from .utils import serialize_relations
 
 

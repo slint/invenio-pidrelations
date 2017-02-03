@@ -48,12 +48,3 @@ def test_init():
     assert 'invenio-pidrelations' not in app.extensions
     ext.init_app(app)
     assert 'invenio-pidrelations' in app.extensions
-
-
-def test_view(app):
-    """Test view."""
-    InvenioPIDRelations(app)
-    with app.test_client() as client:
-        res = client.get("/")
-        assert res.status_code == 200
-        assert 'Welcome to Invenio-PIDRelations' in str(res.data)

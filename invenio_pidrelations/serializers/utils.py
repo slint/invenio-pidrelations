@@ -28,6 +28,7 @@ from invenio_pidrelations.api import PIDVersionRelation
 
 
 def serialize_relations(pid):
+    """Serialize the relations for given PID."""
     return dict(
         versions=dict(
             is_latest=PIDVersionRelation.is_latest(pid),

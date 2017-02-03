@@ -28,6 +28,8 @@ from __future__ import absolute_import, print_function
 
 from flask_babelex import gettext as _
 
+from . import config
+
 
 class InvenioPIDRelations(object):
     """Invenio-PIDRelations extension."""
@@ -48,7 +50,6 @@ class InvenioPIDRelations(object):
 
     def init_config(self, app):
         """Initialize configuration."""
-        app.config.setdefault(
-            "PIDRELATIONS_BASE_TEMPLATE",
-            app.config.get("BASE_TEMPLATE",
-                           "invenio_pidrelations/base.html"))
+        for k in dir(config):
+            if k.startswith('PIDRELATIONS_'):
+                app.config.setdefault(k, getattr(config, k))

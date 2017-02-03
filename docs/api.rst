@@ -27,9 +27,3 @@ API Docs
 
 .. automodule:: invenio_pidrelations.ext
    :members:
-
-Views
------
-
-.. automodule:: invenio_pidrelations.views
-   :members:

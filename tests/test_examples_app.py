@@ -34,7 +34,7 @@ import pytest
 
 
 @pytest.yield_fixture
-def example_app():
+def _example_app():
     """Example app fixture."""
     current_dir = os.getcwd()
 
@@ -66,7 +66,7 @@ def example_app():
     os.chdir(current_dir)
 
 
-def test_example_app_role_admin(example_app):
+def _test_example_app_role_admin(example_app):
     """Test example app."""
     cmd = 'curl http://0.0.0.0:5000/'
     output = subprocess.check_output(cmd, shell=True)
