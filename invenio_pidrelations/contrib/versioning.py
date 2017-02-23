@@ -26,7 +26,7 @@
 
 from __future__ import absolute_import, print_function
 
-from flask import current_app
+from flask import current_app, Blueprint
 from invenio_db import db
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus
 
@@ -43,18 +43,24 @@ class PIDVersioning(PIDConceptOrdered):
         when calling 'insert'.
     """
 
-    def __init__(self, child=None, parent=None, relation=None):
+    def __init__(self, child=None, parent=None, draft_deposit=None,
+                 draft_record=None, relation=None):
         """Create a PID versioning API."""
         self.relation_type = resolve_relation_type_config('version').id
         if relation is not None:
             if relation.relation_type != self.relation_type:
                 raise ValueError("Provided PID relation ({0}) is not a "
                                  "version relation.".format(relation))
-            return super(PIDVersioning, self).__init__(relation=relation)
+            super(PIDVersioning, self).__init__(relation=relation)
         else:
-            return super(PIDVersioning, self).__init__(
+            super(PIDVersioning, self).__init__(
                 child=child, parent=parent, relation_type=self.relation_type,
                 relation=relation)
+        if self.child:
+            self.relation = PIDRelation.query.filter(
+                PIDRelation.child_id == self.child.id,
+                PIDRelation.relation_type == self.relation_type,
+            ).one_or_none()
 
     def insert_child(self, child, index=-1):
         """Insert child into versioning scheme.
@@ -83,7 +89,11 @@ class PIDVersioning(PIDConceptOrdered):
             raise Exception("Removing single child is not supported.")
         with db.session.begin_nested():
             super(PIDVersioning, self).remove_child(child, reorder=True)
-            self.parent.redirect(self.last_child)
+            if self.last_child is not None:
+                self.parent.redirect(self.last_child)
+            # else:
+            #     self.parent.unassign()
+            #     self.parent.delete()  # TODO: Deleting redirection
 
     def create_parent(self, pid_value, status=PIDStatus.REGISTERED,
                       redirect=True):
@@ -99,11 +109,96 @@ class PIDVersioning(PIDConceptOrdered):
         if redirect:
             self.parent.redirect(self.child)
 
-    # TODO: This will be required for finding the last draft
-    # def get_last_child(self, status=PIDStatus.REGISTERED):
-    #     pass
+    @property
+    def last_child(self):
+        """
+        Get the latest PID as pointed by the Head PID.
+
+        If the 'pid' is a Head PID, return the latest of its children.
+        If the 'pid' is a Version PID, return the latest of its siblings.
+        Return None for the non-versioned PIDs.
+        """
+        return self.get_children(ordered=False,
+                                 pid_status=PIDStatus.REGISTERED).filter(
+                PIDRelation.index.isnot(None)).order_by(
+                    PIDRelation.index.desc()).first()
+
+    @property
+    def draft_child(self):
+        """Get the last non-registered child"""
+        return self.get_children(ordered=False).filter(
+                PIDRelation.index.isnot(None),
+                PersistentIdentifier.status != PIDStatus.REGISTERED).order_by(
+                    PIDRelation.index.desc()).one_or_none()
+
+    @property
+    def draft_child_deposit(self):
+        from invenio_pidrelations.contrib.records import RecordDraft
+        return RecordDraft.get_draft(self.draft_child)
+
+    def insert_draft_child(self, child):
+        if not self.draft_child:
+            with db.session.begin_nested():
+                super(PIDVersioning, self).insert_child(child, index=-1)
+        else:
+            raise Exception(
+                "Draft child already exists for this relation: {0}".format(
+                    self.draft_child))
+
+    def remove_draft_child(self):
+        if self.draft_child:
+            with db.session.begin_nested():
+                super(PIDVersioning, self).remove_child(self.draft_child,
+                                                        reorder=True)
+
+    def update_redirect(self):
+        if self.last_child:
+            if self.parent.status == PIDStatus.RESERVED:
+                self.parent.register()
+            self.parent.redirect(self.last_child)
+
+    @property
+    def children(self):
+        """Children of the parent."""
+        return self.get_children(pid_status=PIDStatus.REGISTERED, ordered=True)
+
+
+versioning_blueprint = Blueprint(
+    'invenio_pidrelations.versioning',
+    __name__,
+    template_folder='templates'
+)
+
+
+@versioning_blueprint.app_template_filter()
+def pid_version_parent(child):
+    """Get head PID of a PID."""
+    return PIDVersioning(child=child).parent
+
+
+@versioning_blueprint.app_template_test()
+def latest_version(child_pid=None, parent_pid=None):
+    """Determine if PID is the last version."""
+    assert child_pid or parent_pid
+    return PIDVersioning(child=child_pid, parent=parent_pid).last_child
+
+
+@versioning_blueprint.app_template_filter()
+def pid_versions(pid):
+    """Get all versions of a PID."""
+    return PIDVersioning(child=pid).children
+
+
+@versioning_blueprint.app_template_filter()
+def to_versioning_api(pid, child=True):
+    """Get PIDVersioning object."""
+    return PIDVersioning(
+        child=pid if child else None,
+        parent=pid if not child else None
+    )
 
 
 __all__ = (
     'PIDVersioning',
+    'versioning_blueprint'
 )

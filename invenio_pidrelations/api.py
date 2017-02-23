@@ -101,9 +101,11 @@ class PIDConcept(object):
         """Determine if the provided parent is a parent in the relation."""
         return self.has_children
 
-    def get_children(self, ordered=False):
+    def get_children(self, ordered=False, pid_status=None):
         """Get all children of the parent."""
         filter_cond = [PIDRelation.parent_id == self.parent.id, ]
+        if pid_status is not None:
+            filter_cond.append(PersistentIdentifier.status == pid_status)
         if self.relation_type:
             filter_cond.append(PIDRelation.relation_type == self.relation_type)
 

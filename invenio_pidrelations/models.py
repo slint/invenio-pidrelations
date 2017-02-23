@@ -49,7 +49,7 @@ class PIDRelation(db.Model, Timestamp):
     parent_id = db.Column(
         db.Integer,
         db.ForeignKey(PersistentIdentifier.id, onupdate="CASCADE",
-                      ondelete="RESTRICT"),
+                      ondelete="CASCADE"),
         nullable=False,
         primary_key=True,
         )
@@ -58,7 +58,7 @@ class PIDRelation(db.Model, Timestamp):
     child_id = db.Column(
         db.Integer,
         db.ForeignKey(PersistentIdentifier.id, onupdate="CASCADE",
-                      ondelete="RESTRICT"),
+                      ondelete="CASCADE"),
         nullable=False,
         primary_key=True)
     """Child PID of the relation."""
@@ -77,20 +77,20 @@ class PIDRelation(db.Model, Timestamp):
     parent = db.relationship(
         PersistentIdentifier,
         primaryjoin=PersistentIdentifier.id == parent_id,
-        backref=backref('child_relations', lazy='dynamic'))
+        backref=backref('child_relations', lazy='dynamic',
+                        cascade='all,delete'))
 
     child = db.relationship(
         PersistentIdentifier,
         primaryjoin=PersistentIdentifier.id == child_id,
-        backref=backref('parent_relations', lazy='dynamic'))
+        backref=backref('parent_relations', lazy='dynamic',
+                        cascade='all,delete'))
 
     def __repr__(self):
         """String representation of a PID relation."""
-        return "<PIDRelation: {parent} -> {child} (Type: {type}, " \
-               "Idx: {index})>".format(parent=self.parent.pid_value,
-                                       child=self.child.pid_value,
-                                       type=self.relation_type,
-                                       index=self.index)
+        return "<PIDRelation: ({r.parent.pid_type}:{r.parent.pid_value}) -> " \
+               "({r.child.pid_type}:{r.child.pid_value}) " \
+               "(Type: {r.relation_type}, Idx: {r.index})>".format(r=self)
 
     @classmethod
     def get_parent_relations(cls, pid):

@@ -30,13 +30,14 @@ from invenio_indexer.api import RecordIndexer
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus, \
     RecordIdentifier
 from invenio_records_files.models import RecordsBuckets
-from werkzeug.local import LocalProxy
 
 from ..api import PIDConcept
 from ..contrib.versioning import PIDVersioning
 from ..proxies import current_pidrelations
+from ..utils import resolve_relation_type_config
 
 
+## TODO: To be removed, done manually in minters
 def default_parent_minter(record_uuid, data, pid_type, object_type):
     """Basic RecordIdentifier-based minter for parent PIDs."""
     parent_id = RecordIdentifier.next()
@@ -48,6 +49,7 @@ def default_parent_minter(record_uuid, data, pid_type, object_type):
     )
 
 
+## TODO: To be removed, done manually in minters
 def versioned_minter(pid_type='recid', object_type='rec', parent_minter=None):
     """Parameterized minter decorator for automatic versioning.
 
@@ -76,13 +78,13 @@ def versioned_minter(pid_type='recid', object_type='rec', parent_minter=None):
             pid = child_minter(record_uuid, data)
 
             versioning = PIDVersioning(parent=parent_pid)
-            versioning.insert(pid, index=-1)
+            versioning.insert_child(child=pid)
             return pid
         return wrapper
     return decorator
 
 
-class RecordDraft(object):
+class RecordDraft(PIDConcept):
     """Record Draft relationship.
 
     Users of this class should make calls to `link` and `unlink` based on their
@@ -97,33 +99,58 @@ class RecordDraft(object):
     possess "soft" links to their records' PIDs through metadata.
     """
 
-    class _RecordDraft(PIDConcept):
-        """Internal class being used."""
-
-        relation_type = LocalProxy(
-            lambda: current_pidrelations.relation_types['RECORD_DRAFT'])
+    def __init__(self, child=None, parent=None, relation=None):
+        self.relation_type = resolve_relation_type_config('record_draft').id
+        if relation is not None:
+            if relation.relation_type != self.relation_type:
+                raise ValueError('Provided PID relation ({0}) is not a '
+                                 'version relation.'.format(relation))
+            super(RecordDraft, self).__init__(relation=relation)
+        else:
+            super(RecordDraft, self).__init__(
+                child=child, parent=parent, relation_type=self.relation_type,
+                relation=relation)
 
     @classmethod
     def link(cls, recid, depid):
         """Link a recid and depid."""
-        return cls._RecordDraft(parent=recid, child=depid).create_relation()
+        recid_api = cls(parent=recid)
+        depid_api = cls(child=depid)
+        if recid_api.has_children:
+            raise Exception('Recid {} already has a depid as a draft.'
+                            .format(recid))
+        if depid_api.parent:
+            raise Exception('Depid {} already is a draft of a recid.'
+                            .format(recid))
+        recid_api.insert_child(depid)
 
     @classmethod
-    def unlink(cls, recid=None, depid=None):
+    def unlink(cls, recid, depid):
         """Unlink a recid and depid."""
-        return cls._RecordDraft(parent=recid, child=depid).destroy_relation()
+        return cls(parent=recid).remove_child(depid)
 
     @classmethod
     def get_draft(cls, recid):
         """Get the draft of a record."""
-        return cls._RecordDraft.get_child(recid)
+        return cls(parent=recid).children.one_or_none()
 
     @classmethod
     def get_recid(cls, depid):
         """Get the recid of a record."""
-        return cls._RecordDraft.get_parent(depid)
+        return cls(child=depid).parent
 
 
+def get_latest_draft(recid_pid):
+    """Return the latest draft for a record."""
+    pv = PIDVersioning(child=recid_pid)
+    if pv.draft_child:
+        last_deposit = RecordDraft.get_draft(pv.draft_child)
+    else:
+        last_deposit = None
+    return pv.last_child, last_deposit
+
+
+## TODO: To be removed
 def clone_record_files(src_record, dst_record):
     """Create copy a record's files."""
     # NOTE `Bucket.snapshot` doesn't set `locked`
@@ -136,14 +163,17 @@ def clone_record_files(src_record, dst_record):
     dst_record['_buckets'] = {'deposit': str(snapshot.id)}
 
 
-def index_siblings(pid, only_previous_version=False):
+def index_siblings(pid, only_neighbors=False):
     """Send sibling records of the passed pid for indexing."""
-    siblings = (PIDVersioning(child=pid)
-                .children(child_status=(PIDStatus.REGISTERED,))
-                .all())
-    prev_ver = only_previous_version and siblings[-2:-2]
-    if prev_ver:
-        RecordIndexer().index_by_id(str(prev_ver.objec_uuid))
-    else:
-        RecordIndexer().bulk_index([str(s.object_uuid)
-                                    for s in siblings if s != pid])
+    siblings = (PIDVersioning(child=pid).children.all())
+
+    index_pids = siblings
+    if only_neighbors:
+        pid_index = siblings.index(pid)
+        index_pids = siblings[(pid_index - 1):(pid_index + 2)]
+    for p in index_pids:
+        if p != pid:
+            RecordIndexer().index_by_id(str(p.object_uuid))
+
+    # RecordIndexer().bulk_index([str(p.object_uuid)
+    #                             for p in index_pids if p != pid])

@@ -53,12 +53,20 @@ def resolve_relation_type_config(value):
     """
     relation_types = current_app.config['PIDRELATIONS_RELATION_TYPES']
     if isinstance(value, six.string_types):
-        obj = next(rt for rt in relation_types if rt.name == value)
+        try:
+            obj = next(rt for rt in relation_types if rt.name == value)
+        except StopIteration as e:
+            raise ValueError("Relation name '{0}' is not configured.".format(
+                value))
+
     elif isinstance(value, int):
-        obj = next(rt for rt in relation_types if rt.id == value)
+        try:
+            obj = next(rt for rt in relation_types if rt.id == value)
+        except StopIteration as e:
+            raise ValueError("Relation ID {0} is not configured.".format(
+                value))
     else:
-        raise ValueError("Provided value '{0}' does not resolve to anyof the "
-                         "configured relation types.")
+        raise ValueError("Type of value '{0}' is not supported for resolving.")
     api_class = obj_or_import_string(obj.api)
     schema_class = obj_or_import_string(obj.schema)
     return obj.__class__(obj.id, obj.name, obj.label, api_class, schema_class)

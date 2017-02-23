@@ -24,14 +24,9 @@
 
 """PIDRelation JSON Schema for metadata."""
 
-from flask import current_app
-from marshmallow import Schema, fields, pre_dump
-from werkzeug.utils import cached_property
+from marshmallow import Schema, fields
 
-from invenio_pidrelations.api import PIDConcept
-from invenio_pidrelations.models import PIDRelation
-
-from ..utils import obj_or_import_string, resolve_relation_type_config
+from ..utils import resolve_relation_type_config
 from .utils import serialize_relations
 
 
@@ -53,7 +48,7 @@ class RelationSchema(Schema):
     is_parent = fields.Method('_is_parent')
     is_child = fields.Method('_is_child')
     is_last = fields.Method('dump_is_last')
-    is_first = fields.Method('dump_is_first')
+    # is_first = fields.Method('dump_is_first')
     index = fields.Method('dump_index')
     next = fields.Method('dump_next')
     previous = fields.Method('dump_previous')
@@ -92,7 +87,6 @@ class RelationSchema(Schema):
 
     def dump_is_last(self, obj):
         """Dump the boolean stating if the child in the relation is last.
-
         Dumps `None` for parent serialization.
         """
         if self._is_child(obj) and obj.is_ordered:
@@ -101,15 +95,14 @@ class RelationSchema(Schema):
         else:
             return None
 
-    def dump_is_first(self, obj):
-        """Dump the boolean stating if the child in the relation is first.
-
-        Dumps `None` for parent serialization.
-        """
-        if self._is_child(obj) and obj.is_ordered:
-            return obj.children.first() == self.context['pid']
-        else:
-            return None
+    #def dump_is_first(self, obj):
+    #    """Dump the boolean stating if the child in the relation is first.
+    #    Dumps `None` for parent serialization.
+    #    """
+    #    if self._is_child(obj) and obj.is_ordered:
+    #        return obj.children.first() == self.context['pid']
+    #    else:
+    #        return None
 
     def dump_type(self, obj):
         """Dump the text name of the relation."""
