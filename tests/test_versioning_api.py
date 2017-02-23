@@ -30,6 +30,7 @@ from invenio_pidstore.models import PersistentIdentifier, PIDStatus
 
 from invenio_pidrelations.contrib.versioning import PIDVersioning
 from invenio_pidrelations.models import PIDRelation
+from invenio_pidrelations.utils import resolve_relation_type_config
 
 
 def test_version_pids_create(app, db):
@@ -54,7 +55,7 @@ def test_version_pids_create(app, db):
     assert pr.child == h1v1
     assert pr.parent == pv.parent
 
-    VERSION = app.config['PIDRELATIONS_RELATION_TYPES']['VERSION']
+    VERSION = resolve_relation_type_config('version').id
     assert pr.relation_type == VERSION
     assert pr.index == 0
 
@@ -67,7 +68,7 @@ def test_version_api_edit(app, db, version_pids):
     assert h1.get_redirect() == h1v2
     assert pv.last_child == h1v2
 
-    h1v3 = PersistentIdentifier.create('doi', 'foobar.v3', object_type='rec')
+    h1v3 = PersistentIdentifier.create('recid', 'foobar.v3', object_type='rec')
     pv.insert_child(h1v3)
     assert [h1v1, h1v2, h1v3] == pv.children.all()
     assert h1.get_redirect() == h1v3

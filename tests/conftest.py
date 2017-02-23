@@ -35,23 +35,23 @@ from flask import Flask
 from flask_babelex import Babel
 from invenio_db import db as db_
 from invenio_db import InvenioDB
-from invenio_pidstore import InvenioPIDStore
-from invenio_pidstore.models import PersistentIdentifier, PIDStatus
-from sqlalchemy_utils.functions import create_database, database_exists
-
-from invenio_pidrelations import InvenioPIDRelations
-from invenio_pidrelations.contrib.versioning import PIDVersioning
-from invenio_pidrelations.models import PIDRelation
 from invenio_indexer import InvenioIndexer
 from invenio_indexer.api import RecordIndexer
 from invenio_pidstore import InvenioPIDStore
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus
 from invenio_records import InvenioRecords, Record
 from invenio_search import InvenioSearch, current_search, current_search_client
+from marshmallow import fields
 from sqlalchemy_utils.functions import create_database, database_exists
 
 from invenio_pidrelations import InvenioPIDRelations
-from invenio_pidrelations.models import PIDRelation, RelationType
+from invenio_pidrelations.config import RelationType
+from invenio_pidrelations.contrib.versioning import PIDVersioning
+from invenio_pidrelations.models import PIDRelation
+from invenio_pidrelations.serializers.schemas import RelationSchema
+from invenio_pidrelations.utils import resolve_relation_type_config
+
+resolve_relation_type_config
 
 
 @pytest.yield_fixture()
@@ -105,30 +105,30 @@ def db(app):
 def pids(app, db):
     """Test PIDs fixture."""
     # TODO: Head PIDs do not have redirects as they are created outside API
-    h1 = PersistentIdentifier.create('doi', 'foobar', object_type='rec',
+    h1 = PersistentIdentifier.create('recid', 'foobar', object_type='rec',
                                      status=PIDStatus.REGISTERED)
-    h1v1 = PersistentIdentifier.create('doi', 'foobar.v1', object_type='rec')
-    h1v2 = PersistentIdentifier.create('doi', 'foobar.v2', object_type='rec')
-    h1v3 = PersistentIdentifier.create('doi', 'foobar.v3', object_type='rec')
+    h1v1 = PersistentIdentifier.create('recid', 'foobar.v1', object_type='rec')
+    h1v2 = PersistentIdentifier.create('recid', 'foobar.v2', object_type='rec')
+    h1v3 = PersistentIdentifier.create('recid', 'foobar.v3', object_type='rec')
 
-    ORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['ORDERED']
-    UNORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['UNORDERED']
+    ORDERED = resolve_relation_type_config('ordered').id
+    UNORDERED = resolve_relation_type_config('unordered').id
     PIDRelation.create(h1, h1v1, ORDERED, 0)
     PIDRelation.create(h1, h1v2, ORDERED, 1)
     PIDRelation.create(h1, h1v3, ORDERED, 2)
     h1.redirect(h1v3)
 
-    h2 = PersistentIdentifier.create('doi', 'spam', object_type='rec',
+    h2 = PersistentIdentifier.create('recid', 'spam', object_type='rec',
                                      status=PIDStatus.REGISTERED)
-    h2v1 = PersistentIdentifier.create('doi', 'spam.v1')
+    h2v1 = PersistentIdentifier.create('recid', 'spam.v1')
     PIDRelation.create(h2, h2v1, ORDERED, 0)
     h2.redirect(h2v1)
 
-    c1 = PersistentIdentifier.create('doi', 'bazbar')
-    c1r1 = PersistentIdentifier.create('doi', 'resource1')
-    c1r2 = PersistentIdentifier.create('doi', 'resource2')
+    c1 = PersistentIdentifier.create('recid', 'bazbar')
+    c1r1 = PersistentIdentifier.create('recid', 'resource1')
+    c1r2 = PersistentIdentifier.create('recid', 'resource2')
 
-    pid1 = PersistentIdentifier.create('doi', 'eggs')
+    pid1 = PersistentIdentifier.create('recid', 'eggs')
     PIDRelation.create(c1, c1r1, UNORDERED, None)
     PIDRelation.create(c1, c1r2, UNORDERED, None)
     return {
@@ -146,10 +146,158 @@ def pids(app, db):
 
 
 @pytest.fixture()
+def nested_pids_and_relations(app, db):
+    """Fixture for a nested PIDs and the expected serialized relations."""
+    # Create some PIDs and connect them into different nested PID relations
+    pids = {}
+    for idx in range(1, 12):
+        pid_value = str(idx)
+        p = PersistentIdentifier.create('recid', pid_value, object_type='rec',
+                                        status=PIDStatus.REGISTERED)
+        pids[idx] = p
+
+    ORDERED = resolve_relation_type_config('ordered').id
+    UNORDERED = resolve_relation_type_config('unordered').id
+    VERSION = resolve_relation_type_config('version').id
+
+    #    1  (Version)
+    #  / | \
+    # 2  3 4
+    PIDRelation.create(pids[1], pids[2], VERSION, 0)
+    PIDRelation.create(pids[1], pids[3], VERSION, 1)
+    PIDRelation.create(pids[1], pids[4], VERSION, 2)
+
+    #    5  (Ordered)
+    #  / | \
+    # 6  4 7
+    PIDRelation.create(pids[5], pids[6], ORDERED, 0)
+    PIDRelation.create(pids[5], pids[4], ORDERED, 1)
+    PIDRelation.create(pids[5], pids[7], ORDERED, 2)
+
+    #    4  (Ordered)
+    #  / |
+    # 8  9
+    PIDRelation.create(pids[4], pids[8], ORDERED, 0)
+    PIDRelation.create(pids[4], pids[9], ORDERED, 1)
+
+    #   10  (Unordered)
+    #  / |
+    # 4  11
+    PIDRelation.create(pids[10], pids[4], UNORDERED, None)
+    PIDRelation.create(pids[10], pids[11], UNORDERED, None)
+
+    # Define the expected PID relation tree for of the PIDs
+    expected_relations = {}
+    expected_relations[4] = {
+        'relations': {
+            'version': [
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '2'},
+                                 {'pid_type': 'recid', 'pid_value': '3'},
+                                 {'pid_type': 'recid', 'pid_value': '4'}],
+                    'is_child': True,
+                    'index': 2,
+                    'previous': {'pid_type': 'recid', 'pid_value': '3'},
+                    'next': None,
+                    'is_first': False,
+                    'is_last': True,
+                    'is_ordered': True,
+                    'is_parent': False,
+                    'parent': {'pid_type': 'recid', 'pid_value': '1'},
+                    'type': 'version'
+                }
+            ],
+            'ordered': [
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '6'},
+                                 {'pid_type': 'recid', 'pid_value': '4'},
+                                 {'pid_type': 'recid', 'pid_value': '7'}],
+                    'is_child': True,
+                    'index': 1,
+                    'previous': {'pid_type': 'recid', 'pid_value': '6'},
+                    'next': {'pid_type': 'recid', 'pid_value': '7'},
+                    'is_first': False,
+                    'is_last': False,
+                    'is_ordered': True,
+                    'is_parent': False,
+                    'parent': {'pid_type': 'recid', 'pid_value': '5'},
+                    'type': 'ordered'
+                },
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '8'},
+                                 {'pid_type': 'recid', 'pid_value': '9'}],
+                    'is_child': False,
+                    'index': None,
+                    'previous': None,
+                    'next': None,
+                    'is_first': None,
+                    'is_last': None,
+                    'is_ordered': True,
+                    'is_parent': True,
+                    'parent': {'pid_type': 'recid', 'pid_value': '4'},
+                    'type': 'ordered'
+                }
+            ],
+            'unordered': [
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '4'},
+                                 {'pid_type': 'recid', 'pid_value': '11'}],
+                    'is_child': True,
+                    'index': None,
+                    'previous': None,
+                    'next': None,
+                    'is_first': True,
+                    'is_last': False,
+                    'is_ordered': True,
+                    'is_parent': False,
+                    'parent': {'pid_type': 'recid', 'pid_value': '10'},
+                    'type': 'unordered'
+                },
+            ]
+        }
+    }
+    return pids, expected_relations
+
+
+class CustomRelationSchema(RelationSchema):
+    """PID relation Schema containing only children and one extra field."""
+
+    class Meta:
+        """Meta fields of the schema."""
+
+        fields = ("children", "has_three_children", )
+
+    has_three_children = fields.Method('dump_has_three_children')
+
+    def dump_has_three_children(self, obj):
+        """Dump information if relation has exactly three children."""
+        return obj.children.count() == 3
+
+
+@pytest.yield_fixture()
+def custom_relation_schema(app):
+    """Fixture for PID relations config with custom schemas."""
+    orig = app.config['PIDRELATIONS_RELATION_TYPES']
+    app.config['PIDRELATIONS_RELATION_TYPES'] = [
+        RelationType(0, 'ordered', 'Ordered',
+                     'invenio_pidrelations.api:PIDConceptOrdered',
+                     CustomRelationSchema),
+        RelationType(1, 'unordered', 'Unordered',
+                     'invenio_pidrelations.api:PIDConcept',
+                     CustomRelationSchema),
+        RelationType(2, 'version', 'Version',
+                     'invenio_pidrelations.contrib.versioning:PIDVersioning',
+                     CustomRelationSchema),
+    ]
+    yield app
+    app.config['PIDRELATIONS_RELATION_TYPES'] = orig
+
+
+@pytest.fixture()
 def version_pids(app, db):
     """Versioned PIDs fixture with one parent and two versions."""
-    h1v1 = PersistentIdentifier.create('doi', 'foobar.v1', object_type='rec')
-    h1v2 = PersistentIdentifier.create('doi', 'foobar.v2', object_type='rec')
+    h1v1 = PersistentIdentifier.create('recid', 'foobar.v1', object_type='rec')
+    h1v2 = PersistentIdentifier.create('recid', 'foobar.v2', object_type='rec')
     pv = PIDVersioning(child=h1v1)
     pv.create_parent('foobar')
     pv.insert_child(h1v2)
@@ -163,6 +311,7 @@ def version_pids(app, db):
 
 @pytest.fixture()
 def records(pids, db):
+    """Fixture for the records."""
     pid_versions = ['h1v1', 'h1v2', 'h2v1']
     schema = {
         'type': 'object',
@@ -172,7 +321,7 @@ def records(pids, db):
     }
     data = {
         name: {'title': 'Test version {}'.format(name),
-               'control_number': pids[name].pid_value,
+               'recid': pids[name].pid_value,
                '$schema': schema}
         for name in pid_versions
     }
@@ -186,6 +335,7 @@ def records(pids, db):
 
 @pytest.fixture()
 def indexed_records(records):
+    """Fixture for the records, which are already indexed."""
     current_search_client.indices.flush('*')
     # delete all elasticsearch indices and recreate them
     for deleted in current_search.delete(ignore=[404]):

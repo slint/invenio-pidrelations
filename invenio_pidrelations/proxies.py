@@ -27,6 +27,5 @@
 from flask import current_app
 from werkzeug.local import LocalProxy
 
-
 current_pidrelations = LocalProxy(
     lambda: current_app.extensions['invenio-pidrelations'])

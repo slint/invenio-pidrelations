@@ -22,43 +22,24 @@
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
 
+"""PID relations indexers."""
+
 from __future__ import absolute_import, print_function
 
 from invenio_pidstore.models import PersistentIdentifier
 
 from .proxies import current_pidrelations
+from .serializers.utils import serialize_relations
 
 
 def index_relations(sender, json=None, record=None, index=None, **kwargs):
     """Add relations to the indexed record."""
-    pids = (PersistentIdentifier.query
-            .filter(PersistentIdentifier.object_uuid == record.id)
-            .all())
-    relations = {}
-    if pids:
-        for pid in pids:
-            indexed = current_pidrelations.indexed_relations.get(pid.pid_type)
-            if indexed:
-                api_cls = indexed['api']
-                parent = api_cls.get_parent(pid)
-                api = api_cls(child=pid, parent=parent)
-                if indexed.get('ordered', False):
-                    relation = dict(
-                        parent=parent.pid_value,
-                        # order=api.relation.order,
-                        is_latest=api.is_last_child(),
-                        # siblings=[p.pid_value
-                        #           for p in api.get_all_versions(pid)],
-                        # FIXME: if siblings is ordered we don't need "last"
-                        # and "order" fields. Otherwise we do. Also B2Share
-                        # will probably not use "siblings". We need to be able
-                        # to choose the fields we want to index.
-                    )
-                else:
-                    relation = dict(
-                        parent=parent.pid_value,
-                    )
-                relations[indexed['field']] = relation
-    if relations:
-        json['relations'] = relations
+    pid = PersistentIdentifier.query.filter(
+        PersistentIdentifier.object_uuid == record.id,
+        PersistentIdentifier.pid_type == current_pidrelations.primary_pid_type,
+        ).one_or_none()
+    if pid:
+        relations = serialize_relations(pid)
+        if relations:
+            json['relations'] = relations
     return json

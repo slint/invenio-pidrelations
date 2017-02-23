@@ -56,15 +56,9 @@ To reset the example application run:
 
 from __future__ import absolute_import, print_function
 
-from flask import Flask
-from flask_babelex import Babel
-from invenio_db import InvenioDB
-from invenio_pidstore import InvenioPIDStore
-
-from invenio_pidrelations import InvenioPIDRelations
 from flask import Flask, redirect, render_template, request, url_for
-from invenio_indexer import InvenioIndexer
 from invenio_db import InvenioDB, db
+from invenio_indexer import InvenioIndexer
 from invenio_pidstore import InvenioPIDStore
 from invenio_pidstore.providers.recordid import RecordIdProvider
 from invenio_pidstore.resolver import Resolver
@@ -74,9 +68,8 @@ from marshmallow import Schema, fields
 
 from invenio_pidrelations import InvenioPIDRelations
 from invenio_pidrelations.contrib.records import versioned_minter
-from invenio_pidrelations.models import PIDRelation, RelationType
-from invenio_pidrelations.serializers.schemas import RelationsSchema
-from invenio_pidrelations.versions_api import PIDVersioning
+from invenio_pidrelations.contrib.versioning import PIDVersioning
+from invenio_pidrelations.serializers.schemas import PIDRelationsMixin
 from invenio_pidrelations.views import blueprint as pidrelations_blueprint
 
 # Create Flask application
@@ -95,19 +88,17 @@ record_resolver = Resolver(
 )
 
 
-class SimpleRecordSchema(Schema):
+class SimpleRecordSchema(Schema, PIDRelationsMixin):
     """Tiny schema for our simple record."""
 
     recid = fields.Str()
     title = fields.Str()
     body = fields.Str()
 
-    relations = fields.Nested(RelationsSchema, dump_only=True)
-
 
 @app.route('/')
 def index():
-    heads = PIDVersioning.get_parents()
+    heads = PIDVersioning.parents
     return render_template('index.html', heads=heads)
 
 
@@ -141,5 +132,5 @@ def create_simple_record(data):
 @versioned_minter(pid_type='recid')
 def record_minter(record_uuid, data):
     provider = RecordIdProvider.create('rec', record_uuid)
-    data['control_number'] = provider.pid.pid_value
+    data['recid'] = provider.pid.pid_value
     return provider.pid

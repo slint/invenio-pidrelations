@@ -24,36 +24,46 @@
 
 """Invenio module that adds PID relations to the Invenio-PIDStore module."""
 
-PIDRELATION_RELATION_TYPE_TITLES = {
-    'ORDERED': 'Ordered',
-    'UNORDERED': 'Unordered',
-    'VERSION': 'Version',
-}
+from collections import namedtuple
 
-PIDRELATIONS_RELATION_TYPES = {
+RelationType = namedtuple('RelationType',
+                          ['id', 'name', 'label', 'api', 'schema'])
+
+PIDRELATIONS_RELATION_TYPES = [
+    RelationType(0, 'ordered', 'Ordered',
+                 'invenio_pidrelations.api:PIDConceptOrdered',
+                 'invenio_pidrelations.serializers.schemas.RelationSchema'),
+    RelationType(1, 'unordered', 'Unordered',
+                 'invenio_pidrelations.api:PIDConcept',
+                 'invenio_pidrelations.serializers.schemas.RelationSchema'),
+    RelationType(2, 'version', 'Version',
+                 'invenio_pidrelations.contrib.versioning:PIDVersioning',
+                 'invenio_pidrelations.serializers.schemas.RelationSchema'),
+]
+
+PIDRELATIONS_RELATION_TYPES2 = {
     'ORDERED': 0,
     'UNORDERED': 1,
     'VERSION': 2,
 }
 """Relation types definition."""
 
-# TODO: Remove after refactorinf
-# PIDRELATIONS_RELATION_TYPES = dict(
-#     VERSION=0,
-#     COLLECTION=1,
-#     RECORD_DRAFT=2,
-# )
+PIDRELATIONS_RELATION_TYPES_SERIALIZED_NAMES = \
+    dict((v, k.lower()) for k, v in PIDRELATIONS_RELATION_TYPES2.items())
+"""Serialized names of the relation types."""
 
-PIDRELATIONS_DEFAULT_VALUE = 'foobar'
-"""Default value for the application."""
+PIDRELATIONS_RELATION_TYPES_SERIALIZED_NAMES = \
+    dict((v, k.lower()) for k, v in PIDRELATIONS_RELATION_TYPES2.items())
+"""Serialized names of the relation types."""
 
-PIDRELATIONS_INDEXED_RELATIONS = dict(
-    recid=dict(
-        field='version',
-        api='invenio_pidrelations.versions_api:PIDVersioning',
-        # FIXME: for now the API does not provide any way to know if a relation
-        # is ordered or not. Thus we write it here.
-        ordered=True,
-    )
-)
-"""Default PID fetcher."""
+PIDRELATIONS_RELATIONS_API = {
+    0: 'invenio_pidrelations.api:PIDConceptOrdered',
+    1: 'invenio_pidrelations.api:PIDConcept',
+    2: 'invenio_pidrelations.contrib.versioning:PIDVersioning',
+}
+
+PIDRELATIONS_PRIMARY_PID_TYPE = 'recid'
+"""Default PID type for relations."""
+
+PIDRELATIONS_INDEX_RELATIONS = True
+"""Enable or disable relations indexing."""

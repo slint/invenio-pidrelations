@@ -26,14 +26,10 @@
 
 from __future__ import absolute_import, print_function
 
-from copy import deepcopy
-
-from flask_babelex import gettext as _
 from werkzeug.utils import cached_property
 
 from . import config
 from .indexers import index_relations
-from .utils import obj_or_import_string
 
 
 class _InvenioPIDRelationsState(object):
@@ -48,17 +44,8 @@ class _InvenioPIDRelationsState(object):
         return self.app.config.get('PIDRELATIONS_RELATION_TYPES', {})
 
     @cached_property
-    def indexed_relations(self):
-        """Load the configuration for indexed relations."""
-        indexed = self.app.config.get('PIDRELATIONS_INDEXED_RELATIONS')
-        if not indexed:
-            return {}
-        result = deepcopy(indexed)
-        for pid_value, conf in result.items():
-            conf.update(dict(api=obj_or_import_string(conf['api'])))
-        return result
-
-from . import config
+    def primary_pid_type(self):
+        return self.app.config.get('PIDRELATIONS_PRIMARY_PID_TYPE')
 
 
 class InvenioPIDRelations(object):
@@ -66,10 +53,6 @@ class InvenioPIDRelations(object):
 
     def __init__(self, app=None):
         """Extension initialization."""
-        # TODO: This is an example of translation string with comment. Please
-        # remove it.
-        # NOTE: This is a note to a translator.
-        _('A translation string')
         if app:
             self.init_app(app)
 
@@ -80,7 +63,7 @@ class InvenioPIDRelations(object):
         app.extensions['invenio-pidrelations'] = _InvenioPIDRelationsState(app)
 
         # Register indexers if they are required
-        if app.config.get('PIDRELATIONS_INDEXED_RELATIONS', {}):
+        if app.config.get('PIDRELATIONS_INDEX_RELATIONS'):
             from invenio_indexer.signals import before_record_index
             before_record_index.connect(index_relations, sender=app)
 

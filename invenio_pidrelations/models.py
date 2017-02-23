@@ -34,7 +34,6 @@ from invenio_pidstore.models import PersistentIdentifier
 from speaklater import make_lazy_gettext
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import backref
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy_utils.models import Timestamp
 
 _ = make_lazy_gettext(lambda: gettext)
@@ -66,8 +65,7 @@ class PIDRelation(db.Model, Timestamp):
 
     relation_type = db.Column(
         db.SmallInteger(),
-        nullable=False,
-        primary_key=True)
+        nullable=False)
     """Type of relation between the parent and child PIDs."""
 
     index = db.Column(db.Integer, nullable=True)
@@ -88,11 +86,21 @@ class PIDRelation(db.Model, Timestamp):
 
     def __repr__(self):
         """String representation of a PID relation."""
-        return "<PIDRelation: {parent} -> {child} ({type}, {index})>".format(
-            parent=self.parent.pid_value,
-            child=self.child.pid_value,
-            type=self.relation_type,
-            index=self.index)
+        return "<PIDRelation: {parent} -> {child} (Type: {type}, " \
+               "Idx: {index})>".format(parent=self.parent.pid_value,
+                                       child=self.child.pid_value,
+                                       type=self.relation_type,
+                                       index=self.index)
+
+    @classmethod
+    def get_parent_relations(cls, pid):
+        """Get all relations where given PID is a parent."""
+        return cls.query.filter((cls.parent == pid))
+
+    @classmethod
+    def get_child_relations(cls, pid):
+        """Get all relations where given PID is a child."""
+        return cls.query.filter((cls.child == pid))
 
     @classmethod
     def create(cls, parent, child, relation_type, index=None):

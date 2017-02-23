@@ -26,7 +26,7 @@
 
 from flask import Blueprint
 
-from .versions_api import PIDVersioning
+from .contrib.versioning import PIDVersioning
 
 blueprint = Blueprint(
     'invenio_pidrelation',
@@ -37,19 +37,23 @@ blueprint = Blueprint(
 
 @blueprint.app_template_filter()
 def latest_pid_version(pid):
+    """Get last PID."""
     return PIDVersioning(child=pid).get_last_child()
 
 
 @blueprint.app_template_filter()
 def head_pid_version(pid):
+    """Get head PID of a PID."""
     return PIDVersioning.get_parent(pid)
 
 
 @blueprint.app_template_test()
 def latest_version(pid):
+    """Determine if PID is the last version."""
     return PIDVersioning.is_latest(pid)
 
 
 @blueprint.app_template_filter()
 def all_versions(pid):
+    """Get all versions of a PID."""
     return PIDVersioning(pid).children()

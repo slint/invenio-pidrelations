@@ -29,7 +29,7 @@ from __future__ import absolute_import, print_function
 # from invenio_indexer.tasks import process_bulk_queue
 from invenio_search import current_search_client
 
-from invenio_pidrelations.versions_api import PIDVersioning
+from invenio_pidrelations.api import PIDConceptOrdered
 
 
 def test_indexers(app, indexed_records, pids):
@@ -38,13 +38,11 @@ def test_indexers(app, indexed_records, pids):
     for name, record in indexed_records.items():
         pid = pids[name]
         hit = next(hit for hit in hits
-                   if hit['_source']['control_number'] == pid.pid_value)
+                   if hit['_source']['recid'] == pid.pid_value)
         relations = hit['_source']['relations']
-        assert relations['version']['parent'] == \
-            PIDVersioning.get_parent(pid).pid_value
-        # TODO: Implement siblings indexing
-        # assert relation['version']['siblings'] == [
-        #     sib.pid_value for sib in PIDVersioning.children(pid)
-        # ]
-        assert relations['version']['is_latest'] == \
-            PIDVersioning(child=pid).is_last_child()
+        pc_api = PIDConceptOrdered(child=pid)
+        assert len(relations['ordered']) == 1
+        assert relations['ordered'][0]['parent']['pid_value'] == \
+            pc_api.parent.pid_value
+        assert relations['ordered'][0]['is_last'] == \
+            pc_api.is_last_child

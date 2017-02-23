@@ -24,91 +24,113 @@
 
 """PIDRelation JSON Schema for metadata."""
 
-from marshmallow import Schema, fields
-
-from .utils import serialize_relations
+from flask import current_app
 from marshmallow import Schema, fields, pre_dump
-from invenio_pidrelations.models import PIDRelation, RelationType
-# from .utils import serialize_relations
+from werkzeug.utils import cached_property
+
+from invenio_pidrelations.api import PIDConcept
+from invenio_pidrelations.models import PIDRelation
+
+from ..utils import obj_or_import_string, resolve_relation_type_config
+from .utils import serialize_relations
+
+
+class PIDSchema(Schema):
+    """PID schema."""
+
+    pid_type = fields.String()
+    pid_value = fields.String()
 
 
 class RelationSchema(Schema):
-    """Relation metadata schema."""
-
-    __RELATION_TYPE__ = RelationType.VERSION
+    """Generic PID relation schema."""
 
     # NOTE: Maybe do `fields.Function` for all of these and put them in `utils`
-    parent = fields.Method('dump_parent', dump_only=True)
-    siblings = fields.Method('dump_siblings', dump_only=True)
+    parent = fields.Method('dump_parent')
+    children = fields.Method('dump_children')
+    type = fields.Method('dump_type')
+    is_ordered = fields.Boolean()
+    is_parent = fields.Method('_is_parent')
+    is_child = fields.Method('_is_child')
+    is_last = fields.Method('dump_is_last')
+    is_first = fields.Method('dump_is_first')
+    index = fields.Method('dump_index')
+    next = fields.Method('dump_next')
+    previous = fields.Method('dump_previous')
 
-    @pre_dump
-    def _prepare_relation_info(self, obj):
-        # Raise validation error (or maybe runtime?)
-        assert 'pid' in self.context
-        return obj
+    def _dump_relative(self, relative):
+        if relative:
+            data, errors = PIDSchema().dump(relative)
+            return data
+        else:
+            return None
+
+    def dump_next(self, obj):
+        """Dump the parent of a PID."""
+        if self._is_child(obj):
+            return self._dump_relative(obj.next)
+
+    def dump_previous(self, obj):
+        """Dump the parent of a PID."""
+        if self._is_child(obj):
+            return self._dump_relative(obj.previous)
+
+    def dump_index(self, obj):
+        """Dump the index of the child in the relation."""
+        if obj.is_ordered and self._is_child(obj):
+            return obj.index
+        else:
+            return None
+
+    def _is_parent(self, obj):
+        """Check if the PID from the context is the parent in the relation."""
+        return obj.parent == self.context['pid']
+
+    def _is_child(self, obj):
+        """Check if the PID from the context is the child in the relation."""
+        return obj.child == self.context['pid']
+
+    def dump_is_last(self, obj):
+        """Dump the boolean stating if the child in the relation is last.
+
+        Dumps `None` for parent serialization.
+        """
+        if self._is_child(obj) and obj.is_ordered:
+            # TODO: This method exists in API
+            return obj.children.all()[-1] == self.context['pid']
+        else:
+            return None
+
+    def dump_is_first(self, obj):
+        """Dump the boolean stating if the child in the relation is first.
+
+        Dumps `None` for parent serialization.
+        """
+        if self._is_child(obj) and obj.is_ordered:
+            return obj.children.first() == self.context['pid']
+        else:
+            return None
+
+    def dump_type(self, obj):
+        """Dump the text name of the relation."""
+        return resolve_relation_type_config(obj.relation_type).name
 
     def dump_parent(self, obj):
-        rv = (PIDRelation
-              .parent(self.context['pid'], self.__RELATION_TYPE__)
-              .pid_value)
-        return rv
+        """Dump the parent of a PID."""
+        return self._dump_relative(obj.parent)
 
-    def dump_siblings(self, obj):
-        siblings = PIDRelation.siblings(
-            self.context['pid'], self.__RELATION_TYPE__).all()
-        self.context['_siblings'] = siblings
-        rv = [pid.pid_value for pid in siblings]
-        return rv
+    def dump_children(self, obj):
+        """Dump the siblings of a PID."""
+        data, errors = PIDSchema(many=True).dump(obj.children.all())
+        return data
 
 
-class OrderedRelationSchema(RelationSchema):
-    """Versions metadata schema."""
+class PIDRelationsMixin(object):
+    """Mixin for easy inclusion of relations information in Record schemas."""
 
-    def dump_siblings(self, obj):
-        pass
+    relations = fields.Method('dump_relations')
 
-    def get_next(self, obj):
-        siblings = self.context['_siblings']
-        next_idx = siblings.index(self.context['pid']) + 1
-        return (siblings[next_idx].pid_value if next_idx < len(siblings)
-                else None)
-
-    def get_prev(self, obj):
-        siblings = self.context['_siblings']
-        prev_idx = siblings.index(self.context['pid']) - 1
-        return siblings[prev_idx].pid_value if prev_idx >= 0 else None
-
-    order = fields.Function(
-        lambda v, ctx: ctx['_siblings'].index(ctx['pid']),
-        dump_only=True)
-
-    next = fields.Method('get_next', dump_only=True)
-    prev = fields.Method('get_prev', dump_only=True)
-
-    is_first = fields.Function(
-        lambda x, ctx: ctx['_siblings'][0] == ctx['pid'],
-        dump_only=True)
-    is_last = fields.Function(
-        lambda x, ctx: ctx['_siblings'][-1] == ctx['pid'],
-        dump_only=True)
-
-
-def make_relation_schema(relation_type, schema_class):
-    assert relation_type in RelationType
-
-    class relation_schema_class(schema_class):
-        __RELATION_TYPE__ = relation_type
-        pass
-    return relation_schema_class
-
-
-## TODO: Check if RelationSchema above is not duplicate
-class RelationsSchema(Schema):
-    """Relation metadata schema."""
-
-    version = fields.Nested(make_relation_schema(RelationType.VERSION,
-                                                 OrderedRelationSchema),
-                            dump_only=True)
-
-    # collections = fields.List(
-    #     UnorderedRelationSchema(RelationType.COLLECTION))
+    def dump_relations(self, obj):
+        """Dump the relations to a dictionary."""
+        pid = self.context['pid']
+        return serialize_relations(pid)

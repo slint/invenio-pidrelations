@@ -31,6 +31,7 @@ from invenio_pidstore.models import PersistentIdentifier
 from sqlalchemy.exc import IntegrityError
 
 from .models import PIDRelation
+from .utils import resolve_relation_type_config
 
 
 class PIDConcept(object):
@@ -57,13 +58,19 @@ class PIDConcept(object):
     @property
     def parents(self):
         """Return the PID parents for given relation."""
+        filter_cond = [PIDRelation.child_id == self.child.id, ]
+        if self.relation_type:
+            filter_cond.append(PIDRelation.relation_type == self.relation_type)
         return db.session.query(PersistentIdentifier).join(
             PIDRelation,
             PIDRelation.parent_id == PersistentIdentifier.id
-        ).filter(
-            PIDRelation.child_id == self.child.id,
-            PIDRelation.relation_type == self.relation_type
-        )
+        ).filter(*filter_cond)
+
+    @property
+    def is_ordered(self):
+        """Determine if the concept is an ordered concept."""
+        return all(val is not None for val in self.children.with_entities(
+            PIDRelation.index))
 
     @property
     def has_parents(self):
@@ -96,17 +103,23 @@ class PIDConcept(object):
 
     def get_children(self, ordered=False):
         """Get all children of the parent."""
+        filter_cond = [PIDRelation.parent_id == self.parent.id, ]
+        if self.relation_type:
+            filter_cond.append(PIDRelation.relation_type == self.relation_type)
+
         q = db.session.query(PersistentIdentifier).join(
             PIDRelation,
             PIDRelation.child_id == PersistentIdentifier.id
-        ).filter(
-            PIDRelation.parent_id == self.parent.id,
-            PIDRelation.relation_type == self.relation_type
-        )
+        ).filter(*filter_cond)
         if ordered:
             return q.order_by(PIDRelation.index.asc())
         else:
             return q
+
+    @property
+    def index(self):
+        """Index of the child in the relation."""
+        return self.relation.index
 
     @property
     def children(self):
@@ -143,6 +156,24 @@ class PIDConcept(object):
         return self.get_children(ordered=False).filter(
             PIDRelation.index.isnot(None)).order_by(
                 PIDRelation.index.desc()).first()
+
+    @property
+    def next(self):
+        """Get the next sibling in the PID relation."""
+        if self.relation.index is not None:
+            return self.children.filter_by(
+                index=self.relation.index + 1).one_or_none()
+        else:
+            return None
+
+    @property
+    def previous(self):
+        """Get the previous sibling in the PID relation."""
+        if self.relation.index is not None:
+            return self.children.filter_by(
+                index=self.relation.index - 1).one_or_none()
+        else:
+            return None
 
     @property
     def is_child(self):
@@ -205,6 +236,21 @@ class PIDConcept(object):
         # TODO: mark 'children' cached_property as dirty
 
 
+class PIDConceptOrdered(PIDConcept):
+    """Standard PID Concept with childred ordering."""
+
+    @property
+    def children(self):
+        """Overwrite the children property to always return them ordered."""
+        return self.get_children(ordered=True)
+
+    @property
+    def is_ordered(self):
+        """Determine if the concept is an ordered concept."""
+        return True
+
+
 __all__ = (
     'PIDConcept',
+    'PIDConceptOrdered',
 )

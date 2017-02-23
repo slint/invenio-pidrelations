@@ -26,15 +26,15 @@
 
 from functools import wraps
 
-from invenio_pidstore.models import (PersistentIdentifier, PIDStatus,
-                                     RecordIdentifier)
+from invenio_indexer.api import RecordIndexer
+from invenio_pidstore.models import PersistentIdentifier, PIDStatus, \
+    RecordIdentifier
 from invenio_records_files.models import RecordsBuckets
 from werkzeug.local import LocalProxy
-from invenio_indexer.api import RecordIndexer
 
 from ..api import PIDConcept
+from ..contrib.versioning import PIDVersioning
 from ..proxies import current_pidrelations
-from ..versions_api import PIDVersioning
 
 
 def default_parent_minter(record_uuid, data, pid_type, object_type):
@@ -105,26 +105,27 @@ class RecordDraft(object):
 
     @classmethod
     def link(cls, recid, depid):
-        """Link a recid and depid"""
+        """Link a recid and depid."""
         return cls._RecordDraft(parent=recid, child=depid).create_relation()
 
     @classmethod
     def unlink(cls, recid=None, depid=None):
-        """Unlink a recid and depid"""
+        """Unlink a recid and depid."""
         return cls._RecordDraft(parent=recid, child=depid).destroy_relation()
 
     @classmethod
     def get_draft(cls, recid):
+        """Get the draft of a record."""
         return cls._RecordDraft.get_child(recid)
 
     @classmethod
     def get_recid(cls, depid):
+        """Get the recid of a record."""
         return cls._RecordDraft.get_parent(depid)
 
 
 def clone_record_files(src_record, dst_record):
     """Create copy a record's files."""
-
     # NOTE `Bucket.snapshot` doesn't set `locked`
     snapshot = src_record.files.bucket.snapshot(lock=False)
     snapshot.locked = False

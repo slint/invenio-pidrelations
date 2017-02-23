@@ -28,23 +28,24 @@ from __future__ import absolute_import, print_function
 
 from invenio_pidrelations.api import PIDConcept
 from invenio_pidrelations.models import PIDRelation
+from invenio_pidrelations.utils import resolve_relation_type_config
 
 
 def test_basic_api_methods(app, db, pids):
     # Set-up
-    h1, h1v1, h1v2, h2, h2v1, c1, c1r1, c1r2, pid1 = \
-        (pids[p] for p in ['h1', 'h1v1', 'h1v2', 'h2', 'h2v1',
+    h1, h1v1, h1v2, h1v3, h2, h2v1, c1, c1r1, c1r2, pid1 = \
+        (pids[p] for p in ['h1', 'h1v1', 'h1v2', 'h1v3', 'h2', 'h2v1',
                            'c1', 'c1r1', 'c1r2', 'pid1'])
-    ORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['ORDERED']
-    UNORDERED = app.config['PIDRELATIONS_RELATION_TYPES']['UNORDERED']
+    ORDERED = resolve_relation_type_config('ordered').id
+    UNORDERED = resolve_relation_type_config('unordered').id
 
     # Test the "children" property and "get_children" method
     # Ordered relations
     assert PIDConcept(
-        parent=h1, relation_type=ORDERED).children.count() == 2
-    assert set([h1v2, h1v1]) == set(PIDConcept(
+        parent=h1, relation_type=ORDERED).children.count() == 3
+    assert set([h1v3, h1v2, h1v1]) == set(PIDConcept(
         parent=h1, relation_type=ORDERED).children.all())
-    assert [h1v1, h1v2] == PIDConcept(
+    assert [h1v1, h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     assert PIDConcept(
         parent=h1v1, relation_type=ORDERED).children.count() == 0
@@ -107,8 +108,9 @@ def test_basic_api_methods(app, db, pids):
 
     # Test "last_child", "is_last_child" properties
     # Ordered relations
-    assert h1v2 == PIDConcept(parent=h1, relation_type=ORDERED).last_child
-    assert PIDConcept(child=h1v2, relation_type=ORDERED).is_last_child is True
+    assert h1v3 == PIDConcept(parent=h1, relation_type=ORDERED).last_child
+    assert PIDConcept(child=h1v3, relation_type=ORDERED).is_last_child is True
+    assert PIDConcept(child=h1v2, relation_type=ORDERED).is_last_child is False
     assert PIDConcept(child=h1v1, relation_type=ORDERED).is_last_child is False
 
     # Unordered relations
@@ -129,7 +131,7 @@ def test_basic_api_methods(app, db, pids):
     # Test the "insert" method for ordered relations
     # Insert at the end (index=-1)
     PIDConcept(parent=h1, relation_type=ORDERED).insert_child(pid1, index=-1)
-    assert [h1v1, h1v2, pid1] == PIDConcept(
+    assert [h1v1, h1v2, h1v3, pid1] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     # Make sure relations order is preserved
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
@@ -137,13 +139,15 @@ def test_basic_api_methods(app, db, pids):
     assert h1_c[0].index == 0
     assert h1_c[1].child == h1v2
     assert h1_c[1].index == 1
-    assert h1_c[2].child == pid1
+    assert h1_c[2].child == h1v3
     assert h1_c[2].index == 2
+    assert h1_c[3].child == pid1
+    assert h1_c[3].index == 3
 
     # Return to previous state
     PIDConcept(parent=h1, relation_type=ORDERED).remove_child(
         pid1, reorder=True)
-    assert [h1v1, h1v2] == PIDConcept(
+    assert [h1v1, h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
     assert h1_c[0].child == h1v1
@@ -153,7 +157,7 @@ def test_basic_api_methods(app, db, pids):
 
     # Insert at the first position (index=0)
     PIDConcept(parent=h1, relation_type=ORDERED).insert_child(pid1, index=0)
-    assert [pid1, h1v1, h1v2] == PIDConcept(
+    assert [pid1, h1v1, h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
     assert h1_c[0].child == pid1
@@ -164,7 +168,7 @@ def test_basic_api_methods(app, db, pids):
     assert h1_c[2].index == 2
     PIDConcept(parent=h1, relation_type=ORDERED).remove_child(
         pid1, reorder=True)
-    assert [h1v1, h1v2] == PIDConcept(
+    assert [h1v1, h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
     assert h1_c[0].child == h1v1
@@ -174,7 +178,7 @@ def test_basic_api_methods(app, db, pids):
 
     # Insert at the second position (index=1)
     PIDConcept(parent=h1, relation_type=ORDERED).insert_child(pid1, index=1)
-    assert [h1v1, pid1, h1v2] == PIDConcept(
+    assert [h1v1, pid1, h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
     assert h1_c[0].child == h1v1
@@ -185,7 +189,7 @@ def test_basic_api_methods(app, db, pids):
     assert h1_c[2].index == 2
     PIDConcept(parent=h1, relation_type=ORDERED).remove_child(
         pid1, reorder=True)
-    assert [h1v1, h1v2] == PIDConcept(
+    assert [h1v1, h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
     assert h1_c[0].child == h1v1
@@ -193,20 +197,22 @@ def test_basic_api_methods(app, db, pids):
     assert h1_c[1].child == h1v2
     assert h1_c[1].index == 1
 
-    # Insert at an arbitrarily large position
+    # Insert at an arbitrarily large position (appends to the end)
     PIDConcept(parent=h1, relation_type=ORDERED).insert_child(pid1, index=100)
-    assert [h1v1, h1v2, pid1] == PIDConcept(
+    assert [h1v1, h1v2, h1v3, pid1] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
     assert h1_c[0].child == h1v1
     assert h1_c[0].index == 0
     assert h1_c[1].child == h1v2
     assert h1_c[1].index == 1
-    assert h1_c[2].child == pid1
+    assert h1_c[2].child == h1v3
     assert h1_c[2].index == 2
+    assert h1_c[3].child == pid1
+    assert h1_c[3].index == 3
     PIDConcept(parent=h1, relation_type=ORDERED).remove_child(
         pid1, reorder=True)
-    assert [h1v1, h1v2] == PIDConcept(
+    assert [h1v1, h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
     assert h1_c[0].child == h1v1
@@ -217,9 +223,9 @@ def test_basic_api_methods(app, db, pids):
     # Remove an extra child
     PIDConcept(parent=h1, relation_type=ORDERED).remove_child(
         h1v1, reorder=True)
-    assert [h1v2] == PIDConcept(
+    assert [h1v2, h1v3] == PIDConcept(
         parent=h1, relation_type=ORDERED).get_children(ordered=True).all()
     h1_c = h1.child_relations.order_by(PIDRelation.index).all()
-    assert h1.child_relations.count() == 1
+    assert h1.child_relations.count() == 2
     assert h1_c[0].child == h1v2
     assert h1_c[0].index == 0

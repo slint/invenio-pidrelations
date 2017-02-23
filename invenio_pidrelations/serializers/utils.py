@@ -24,14 +24,24 @@
 
 """PIDRelation serialization utilities."""
 
-from invenio_pidrelations.api import PIDVersionRelation
+from invenio_pidrelations.api import PIDRelation
+
+from ..utils import resolve_relation_type_config
 
 
 def serialize_relations(pid):
     """Serialize the relations for given PID."""
-    return dict(
-        versions=dict(
-            is_latest=PIDVersionRelation.is_latest(pid),
-            version_of=PIDVersionRelation.get_head(pid).pid_value,
-        )
-    )
+    data = {}
+    relations = PIDRelation.get_child_relations(pid).all()
+    parent_relation = PIDRelation.get_parent_relations(pid).first()
+    if parent_relation:
+        relations.append(parent_relation)
+
+    for relation in relations:
+        rel_cfg = resolve_relation_type_config(relation.relation_type)
+        schema_class = rel_cfg.schema
+        schema = schema_class()
+        schema.context['pid'] = pid
+        result, errors = schema.dump(rel_cfg.api(relation=relation))
+        data.setdefault(rel_cfg.name, []).append(result)
+    return data

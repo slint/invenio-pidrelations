@@ -22,9 +22,12 @@
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
 
+"""PID relations search filters."""
+
 from __future__ import absolute_import, print_function
 
 from elasticsearch_dsl.query import Bool, Q
+
 
 class LatestVersionFilter(object):
     """Shortcut for defining default filters with query parser."""

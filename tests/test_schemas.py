@@ -24,79 +24,72 @@
 
 """Schema tests."""
 
-from marshmallow import Schema, fields
+from marshmallow import Schema
 
-from invenio_pidrelations.serializers.schemas import RelationsSchema
+from invenio_pidrelations.serializers.schemas import PIDRelationsMixin
 
 
-class SampleRecordSchema(Schema):
+class MyRecordSchema(Schema, PIDRelationsMixin):
     """Sample record schema."""
+    pass
 
-    relations = fields.Nested(RelationsSchema)
+
+def test_schema(app, nested_pids_and_relations):
+    """Test the marshmallow schema serialization."""
+    schema = MyRecordSchema(strict=True)
+
+    pids, exp_relations = nested_pids_and_relations
+    for p_idx in exp_relations.keys():
+        pid = pids[p_idx]
+        expected = exp_relations[p_idx]
+        input_data = {'pid': pid}
+        schema.context['pid'] = pid
+        data, errors = schema.dump(input_data)
+        assert not errors
+        assert expected == data  # Test against hand-crafted fixture
+    pass
 
 
-def test_schema(app, pids):
-    schema = SampleRecordSchema(strict=True)
+def test_custom_schema(app, nested_pids_and_relations, custom_relation_schema):
+    """Test the marshmallow schema serialization with custom schema."""
+    schema = MyRecordSchema(strict=True)
+    pids, exp_relations = nested_pids_and_relations
 
-    siblings = [pids['h1v1'].pid_value,
-                pids['h1v2'].pid_value,
-                pids['h1v3'].pid_value]
-
-    parent = pids['h1'].pid_value
-
-    pid = pids['h1v1']
-    input_data = {'pid': pid, 'relations': {'version': {}}}
+    pid = pids[4]
+    input_data = {'pid': pid}
     schema.context['pid'] = pid
     data, errors = schema.dump(input_data)
-    assert not errors
-    assert data == {
-        u'relations': {
-            u'version': {
-                u'order': 0,
-                u'parent': parent,
-                u'siblings': siblings,
-                u'next': pids['h1v2'].pid_value,
-                u'prev': None,
-                u'is_first': True,
-                u'is_last': False,
-            },
+    expected = {
+        'relations': {
+            'version': [
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '2'},
+                                 {'pid_type': 'recid', 'pid_value': '3'},
+                                 {'pid_type': 'recid', 'pid_value': '4'}],
+                    'has_three_children': True,
+                },
+            ],
+            'ordered': [
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '6'},
+                                 {'pid_type': 'recid', 'pid_value': '4'},
+                                 {'pid_type': 'recid', 'pid_value': '7'}],
+                    'has_three_children': True,
+                },
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '8'},
+                                 {'pid_type': 'recid', 'pid_value': '9'}],
+                    'has_three_children': False,
+                },
+            ],
+            'unordered': [
+                {
+                    'children': [{'pid_type': 'recid', 'pid_value': '4'},
+                                 {'pid_type': 'recid', 'pid_value': '11'}],
+                    'has_three_children': False,
+                },
+            ],
         }
     }
-
-    pid = pids['h1v2']
-    input_data = {'pid': pid, 'relations': {'version': {}}}
-    schema.context['pid'] = pid
-    data, errors = schema.dump(input_data)
     assert not errors
-    assert data == {
-        u'relations': {
-            u'version': {
-                u'order': 1,
-                u'parent': parent,
-                u'siblings': siblings,
-                u'next': pids['h1v3'].pid_value,
-                u'prev': pids['h1v1'].pid_value,
-                u'is_first': False,
-                u'is_last': False,
-            },
-        }
-    }
-
-    pid = pids['h1v3']
-    input_data = {'pid': pid, 'relations': {'version': {}}}
-    schema.context['pid'] = pid
-    data, errors = schema.dump(input_data)
-    assert not errors
-    assert data == {
-        u'relations': {
-            u'version': {
-                u'order': 2,
-                u'parent': parent,
-                u'siblings': siblings,
-                u'next': None,
-                u'prev': pids['h1v2'].pid_value,
-                u'is_first': False,
-                u'is_last': True,
-            },
-        }
-    }
+    assert expected == data

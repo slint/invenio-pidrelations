@@ -30,11 +30,12 @@ from flask import current_app
 from invenio_db import db
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus
 
-from ..api import PIDConcept
+from ..api import PIDConceptOrdered
 from ..models import PIDRelation
+from ..utils import resolve_relation_type_config
 
 
-class PIDVersioning(PIDConcept):
+class PIDVersioning(PIDConceptOrdered):
     """API for PID versioning relations.
 
     - Adds automatic redirection handling for Parent-LastChild
@@ -44,23 +45,16 @@ class PIDVersioning(PIDConcept):
 
     def __init__(self, child=None, parent=None, relation=None):
         """Create a PID versioning API."""
-        VERSION = current_app.config['PIDRELATIONS_RELATION_TYPES']['VERSION']
-        self.relation_type = VERSION
+        self.relation_type = resolve_relation_type_config('version').id
         if relation is not None:
-            assert relation.relation_type == VERSION
-            if relation.relation_type != VERSION:
+            if relation.relation_type != self.relation_type:
                 raise ValueError("Provided PID relation ({0}) is not a "
                                  "version relation.".format(relation))
             return super(PIDVersioning, self).__init__(relation=relation)
         else:
             return super(PIDVersioning, self).__init__(
-                child=child, parent=parent, relation_type=VERSION,
+                child=child, parent=parent, relation_type=self.relation_type,
                 relation=relation)
-
-    @property
-    def children(self):
-        """Overwrite the children property to always return them ordered."""
-        return self.get_children(ordered=True)
 
     def insert_child(self, child, index=-1):
         """Insert child into versioning scheme.
