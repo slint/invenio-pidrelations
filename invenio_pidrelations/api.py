@@ -129,6 +129,18 @@ class PIDConcept(object):
         return self.get_children()
 
     @property
+    def child(self):
+        """Single child of the relation."""
+        if self._child is None:
+            child = self.children.one_or_none()
+            self._child = child
+        return self._child
+
+    @child.setter
+    def child(self, child):
+        self._child = child
+
+    @property
     def has_children(self):
         """Determine if there are any children in this relationship."""
         return self.children.count() > 0

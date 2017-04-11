@@ -26,8 +26,9 @@
 
 from marshmallow import Schema
 
-from invenio_pidrelations.serializers.schemas import RelationSchema, PIDRelationsMixin
 from invenio_pidrelations.models import PIDRelation
+from invenio_pidrelations.serializers.schemas import PIDRelationsMixin, \
+    RelationSchema
 
 
 class SampleRecordSchema(Schema, PIDRelationsMixin):

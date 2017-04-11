@@ -26,14 +26,17 @@
 
 from functools import wraps
 
+from invenio_db import db
 from invenio_indexer.api import RecordIndexer
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus, \
     RecordIdentifier
 from invenio_records_files.models import RecordsBuckets
+from marshmallow import fields
 
 from ..api import PIDConcept
 from ..contrib.versioning import PIDVersioning
-from ..proxies import current_pidrelations
+from ..models import PIDRelation
+from ..serializers.schemas import RelationSchema
 from ..utils import resolve_relation_type_config
 
 
@@ -100,6 +103,7 @@ class RecordDraft(PIDConcept):
     """
 
     def __init__(self, child=None, parent=None, relation=None):
+        """Create a Record Draft API."""
         self.relation_type = resolve_relation_type_config('record_draft').id
         if relation is not None:
             if relation.relation_type != self.relation_type:
@@ -140,6 +144,41 @@ class RecordDraft(PIDConcept):
         return cls(child=depid).parent
 
 
+class PIDRecordVersioning(PIDVersioning):
+    """Record-aware PID versioning API."""
+
+    @property
+    def draft_child(self):
+        """Get the last non-registered child."""
+        return self.get_children(ordered=False).filter(
+                PIDRelation.index.isnot(None),
+                PersistentIdentifier.status != PIDStatus.REGISTERED).order_by(
+                    PIDRelation.index.desc()).one_or_none()
+
+    @property
+    def draft_child_deposit(self):
+        """Get last non-registered child's linked depid."""
+        return RecordDraft.get_draft(self.draft_child)
+
+    def insert_draft_child(self, child, index=-1):
+        """Insert child into versioning scheme as draft."""
+        assert child.status != PIDStatus.REGISTERED
+        if not self.draft_child:
+            with db.session.begin_nested():
+                super(PIDVersioning, self).insert_child(child, index=index)
+        else:
+            raise Exception(
+                "Draft child already exists for this relation: {0}".format(
+                    self.draft_child))
+
+    def remove_draft_child(self):
+        """Remove the draft child from a versioning scheme."""
+        if self.draft_child:
+            with db.session.begin_nested():
+                super(PIDVersioning, self).remove_child(self.draft_child,
+                                                        reorder=True)
+
+
 def get_latest_draft(recid_pid):
     """Return the latest draft for a record."""
     pv = PIDVersioning(child=recid_pid)
@@ -175,5 +214,23 @@ def index_siblings(pid, only_neighbors=False):
         if p != pid:
             RecordIndexer().index_by_id(str(p.object_uuid))
 
-    # RecordIndexer().bulk_index([str(p.object_uuid)
-    #                             for p in index_pids if p != pid])
+
+class RecordVersionRelationSchema(RelationSchema):
+    """PID version relation schema."""
+
+    last_child = fields.Method('dump_last_child')
+    last_draft = fields.Method('dump_last_draft')
+    last_draft_deposit = fields.Method('dump_last_draft_deposit')
+
+    def dump_last_child(self, obj):
+        """Dump the last child."""
+        if obj.is_ordered:
+            return self._dump_relative(obj.last_child)
+
+    def dump_last_draft(self, obj):
+        """Dump the last non-registered PID."""
+        return self._dump_relative(obj.draft_child)
+
+    def dump_last_draft_deposit(self, obj):
+        """Dump the last non-registered recid's deposit PID."""
+        return self._dump_relative(obj.draft_child_deposit)

@@ -42,6 +42,8 @@ class RelationSchema(Schema):
 
     # NOTE: Maybe do `fields.Function` for all of these and put them in `utils`
     parent = fields.Method('dump_parent')
+    parents = fields.Method('dump_parents')
+    child = fields.Method('dump_child')
     children = fields.Method('dump_children')
     type = fields.Method('dump_type')
     is_ordered = fields.Boolean()
@@ -87,6 +89,7 @@ class RelationSchema(Schema):
 
     def dump_is_last(self, obj):
         """Dump the boolean stating if the child in the relation is last.
+
         Dumps `None` for parent serialization.
         """
         if self._is_child(obj) and obj.is_ordered:
@@ -111,6 +114,15 @@ class RelationSchema(Schema):
     def dump_parent(self, obj):
         """Dump the parent of a PID."""
         return self._dump_relative(obj.parent)
+
+    def dump_parents(self, obj):
+        """Dump the parents of a PID."""
+        data, errors = PIDSchema(many=True).dump(obj.parents.all())
+        return data
+
+    def dump_child(self, obj):
+        """Dump the single child of a PID."""
+        return self._dump_relative(obj.child)
 
     def dump_children(self, obj):
         """Dump the siblings of a PID."""

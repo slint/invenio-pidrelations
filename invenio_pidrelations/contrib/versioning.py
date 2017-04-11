@@ -26,7 +26,7 @@
 
 from __future__ import absolute_import, print_function
 
-from flask import current_app, Blueprint
+from flask import Blueprint
 from invenio_db import db
 from invenio_pidstore.models import PersistentIdentifier, PIDStatus
 
@@ -43,8 +43,7 @@ class PIDVersioning(PIDConceptOrdered):
         when calling 'insert'.
     """
 
-    def __init__(self, child=None, parent=None, draft_deposit=None,
-                 draft_record=None, relation=None):
+    def __init__(self, child=None, parent=None, relation=None):
         """Create a PID versioning API."""
         self.relation_type = resolve_relation_type_config('version').id
         if relation is not None:
@@ -123,35 +122,8 @@ class PIDVersioning(PIDConceptOrdered):
                 PIDRelation.index.isnot(None)).order_by(
                     PIDRelation.index.desc()).first()
 
-    @property
-    def draft_child(self):
-        """Get the last non-registered child"""
-        return self.get_children(ordered=False).filter(
-                PIDRelation.index.isnot(None),
-                PersistentIdentifier.status != PIDStatus.REGISTERED).order_by(
-                    PIDRelation.index.desc()).one_or_none()
-
-    @property
-    def draft_child_deposit(self):
-        from invenio_pidrelations.contrib.records import RecordDraft
-        return RecordDraft.get_draft(self.draft_child)
-
-    def insert_draft_child(self, child):
-        if not self.draft_child:
-            with db.session.begin_nested():
-                super(PIDVersioning, self).insert_child(child, index=-1)
-        else:
-            raise Exception(
-                "Draft child already exists for this relation: {0}".format(
-                    self.draft_child))
-
-    def remove_draft_child(self):
-        if self.draft_child:
-            with db.session.begin_nested():
-                super(PIDVersioning, self).remove_child(self.draft_child,
-                                                        reorder=True)
-
     def update_redirect(self):
+        """Update the parent redirect to point to the last_child."""
         if self.last_child:
             if self.parent.status == PIDStatus.RESERVED:
                 self.parent.register()
@@ -200,5 +172,5 @@ def to_versioning_api(pid, child=True):
 
 __all__ = (
     'PIDVersioning',
-    'versioning_blueprint'
+    'versioning_blueprint',
 )

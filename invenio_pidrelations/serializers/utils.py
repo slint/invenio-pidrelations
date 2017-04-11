@@ -24,6 +24,8 @@
 
 """PIDRelation serialization utilities."""
 
+from invenio_pidstore.models import PersistentIdentifier
+
 from invenio_pidrelations.api import PIDRelation
 
 from ..utils import resolve_relation_type_config
@@ -32,6 +34,9 @@ from ..utils import resolve_relation_type_config
 def serialize_relations(pid):
     """Serialize the relations for given PID."""
     data = {}
+    if not isinstance(pid, PersistentIdentifier):
+        pid = PersistentIdentifier.get(pid_type=pid.pid_type,
+                                       pid_value=pid.pid_value)
     relations = PIDRelation.get_child_relations(pid).all()
     parent_relation = PIDRelation.get_parent_relations(pid).first()
     if parent_relation:
@@ -39,9 +44,10 @@ def serialize_relations(pid):
 
     for relation in relations:
         rel_cfg = resolve_relation_type_config(relation.relation_type)
-        schema_class = rel_cfg.schema
-        schema = schema_class()
-        schema.context['pid'] = pid
-        result, errors = schema.dump(rel_cfg.api(relation=relation))
-        data.setdefault(rel_cfg.name, []).append(result)
+        if rel_cfg.schema:
+            schema_class = rel_cfg.schema
+            schema = schema_class()
+            schema.context['pid'] = pid
+            result, errors = schema.dump(rel_cfg.api(relation=relation))
+            data.setdefault(rel_cfg.name, []).append(result)
     return data
